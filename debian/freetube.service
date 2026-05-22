@@ -1,0 +1,40 @@
+[Unit]
+Description=FreeTube YouTube streaming and casting service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=freetube
+Group=freetube
+
+Environment=XDG_CONFIG_HOME=/etc
+Environment=XDG_DATA_HOME=/var/lib/freetube
+
+ExecStart=/usr/bin/freetube
+
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=no
+DeviceAllow=/dev/dri/* rw
+DeviceAllow=/dev/nvidia* rw
+SupplementaryGroups=video render
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+ReadWritePaths=/var/lib/freetube
+
+# Allow binding to network ports
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+(executable
+ (name freetube_client)
+ (public_name freetube_client)
+ (libraries util base eio eio_main uri yojson api cmdliner)
+ (preprocess (pps ppx_deriving_yojson)))

@@ -1,0 +1,7 @@
+(executables
+ (names background content popup)
+ (modes js)
+ (libraries api config device js_of_ocaml)
+ (preprocess (pps js_of_ocaml-ppx ppx_deriving_yojson))
+ (js_of_ocaml
+  (flags (:standard --opt 3 --target-env browser))))

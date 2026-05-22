@@ -1,0 +1,4 @@
+(library
+ (name codec)
+ (libraries base yojson)
+ (preprocess (pps ppx_deriving_yojson ppx_compare ppx_deriving.show)))

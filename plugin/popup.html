@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>FreeTube Cast</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        font: 13px system-ui, -apple-system, sans-serif;
+        margin: 0; padding: 0;
+        width: 360px;
+        background: #181818; color: #eee;
+      }
+      header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px;
+        background: linear-gradient(135deg,#ff2030,#ff7a00);
+        color: #fff; font-weight: 600;
+      }
+      header .title { font-size: 14px; }
+      main { padding: 10px 12px; }
+      .row { display: flex; gap: 6px; align-items: center; }
+      label.lbl { font-size: 11px; color: #aaa; display: block;
+                  margin: 6px 0 2px 0; text-transform: uppercase;
+                  letter-spacing: 0.04em; }
+      input[type=text], input[type=number], select {
+        width: 100%; padding: 6px 8px;
+        background: #262626; color: #eee;
+        border: 1px solid #383838; border-radius: 4px;
+        font: inherit;
+      }
+      button {
+        padding: 6px 12px;
+        background: #1a73e8; color: #fff;
+        border: none; border-radius: 4px; cursor: pointer;
+        font: inherit;
+      }
+      button:hover { background: #2b83f8; }
+      button.secondary { background: #2f2f2f; }
+      button.secondary:hover { background: #404040; }
+      button.ghost {
+        background: transparent; color: #ccc; padding: 4px 6px;
+      }
+      button.ghost:hover { color: #fff; }
+      #status { margin-top: 8px; font-size: 11px; min-height: 14px;
+                color: #8c8; }
+      #status.err { color: #f88; }
+
+      .device-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 10px; margin: 4px 0;
+        background: #232323; border-radius: 4px; cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .device-row:hover { background: #2c2c2c; border-color: #3a3a3a; }
+      .device-row .name { font-weight: 600; }
+      .device-row .meta { font-size: 11px; color: #999; margin-top: 2px; }
+      .device-row .chev { color: #666; }
+      .device-row .dleft { display: flex; align-items: center; gap: 10px; }
+      .device-row .ico { color: #bbb; flex: none; }
+
+      .checks { display: flex; flex-wrap: wrap; gap: 6px; }
+      .checks label {
+        background: #262626; padding: 4px 8px; border-radius: 3px;
+        font-size: 12px; cursor: pointer; user-select: none;
+        border: 1px solid #383838;
+      }
+      .checks input { margin-right: 4px; vertical-align: middle; }
+
+      .detail-back {
+        display: flex; align-items: center; gap: 6px;
+        margin-bottom: 6px;
+      }
+      .info {
+        background: #1f1f1f; padding: 6px 8px; border-radius: 3px;
+        font-size: 11px; color: #bbb;
+        font-family: ui-monospace, monospace;
+        word-break: break-all;
+      }
+      .info div + div { margin-top: 2px; }
+      .info .k { color: #888; margin-right: 6px; }
+
+      .modal {
+        position: fixed; inset: 0; z-index: 10;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .modal-box {
+        background: #222; border: 1px solid #383838; border-radius: 6px;
+        padding: 16px; width: 280px;
+      }
+      .modal-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+      .modal-sub { font-size: 11px; color: #aaa; margin-bottom: 10px; }
+      #pin-input {
+        width: 100%; padding: 8px; font-size: 18px; text-align: center;
+        letter-spacing: 4px;
+        background: #262626; color: #eee;
+        border: 1px solid #383838; border-radius: 4px;
+      }
+      #pin-status { color: #8c8; }
+      #pin-status.err { color: #f88; }
+      button.pair { background: #14a06a; }
+      button.pair:hover { background: #18b878; }
+
+      .dot {
+        display: inline-block; width: 8px; height: 8px;
+        border-radius: 50%; background: #555;
+        vertical-align: middle; margin-left: 4px;
+      }
+      .dot.online { background: #4caf50; }
+
+      .section { margin: 8px 0; padding: 8px 0; border-top: 1px solid #2a2a2a; }
+      .section:first-child { border-top: none; }
+      .section-title { font-size: 12px; font-weight: 600; color: #ccc;
+                       margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="title">FreeTube Cast</span>
+    </header>
+    <main>
+      <div id="view-main">
+        <label class="lbl" for="server">Server</label>
+        <div class="row">
+          <input type="text" id="server" placeholder="http://freetube.local:5544" />
+          <button id="save">Save</button>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <button class="secondary" id="reload">Reload devices</button>
+          <button class="secondary" id="settings">⚙ Settings</button>
+        </div>
+        <div id="status"></div>
+        <label class="lbl">Devices</label>
+        <div id="devices"></div>
+      </div>
+      <div id="view-detail" style="display:none;"></div>
+      <div id="view-settings" style="display:none;"></div>
+    </main>
+    <div id="pin-modal" class="modal" style="display:none;">
+      <div class="modal-box">
+        <div class="modal-title">Pair AirPlay device</div>
+        <div class="modal-sub" id="pin-sub">
+          Enter the code shown on the device screen.
+        </div>
+        <input type="text" id="pin-input" inputmode="numeric"
+               autocomplete="off" placeholder="1234" />
+        <div class="row" style="margin-top:10px; justify-content:flex-end;">
+          <button class="secondary" id="pin-cancel">Cancel</button>
+          <button id="pin-submit">Pair</button>
+        </div>
+        <div id="pin-status" style="margin-top:8px;font-size:11px;
+             min-height:14px;"></div>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

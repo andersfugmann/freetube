@@ -1,0 +1,4 @@
+(library
+ (name api)
+ (libraries base codec yojson uri)
+ (preprocess (pps ppx_deriving_yojson ppx_compare)))

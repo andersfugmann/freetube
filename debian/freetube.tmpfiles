@@ -1,0 +1,2 @@
+d /var/lib/freetube 0750 freetube freetube -
+d /var/lib/freetube/airplay 0750 freetube freetube -

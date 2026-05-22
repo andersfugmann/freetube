@@ -1,0 +1,7 @@
+_build
+freetube.log
+aliases
+static
+plugin/dist/
+*.mp4
+*.webm

@@ -1,0 +1,12 @@
+(library
+ (name airplay)
+ (modules client)
+ (libraries base yojson)
+ (preprocess (pps ppx_deriving_yojson)))
+
+(library
+ (name airplay_protocol)
+ (modules :standard \ client)
+ (libraries airplay util base eio eio.unix mirage-crypto mirage-crypto-ec mirage-crypto-pk mirage-crypto-rng mirage-crypto-rng-eio digestif ohex zarith yojson logs)
+ (inline_tests)
+ (preprocess (pps ppx_inline_test ppx_expect ppx_deriving_yojson)))

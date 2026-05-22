@@ -1,0 +1,39 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export OPAMROOT = $(CURDIR)/debian/.opam
+export OPAMYES = 1
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	opam init --bare --no-setup --disable-sandboxing
+	opam switch create . ocaml-system --no-install
+	opam install . --deps-only --with-test
+
+override_dh_auto_build:
+	opam exec -- make build
+	opam exec -- make plugin
+
+override_dh_auto_test:
+	opam exec -- make test
+
+override_dh_auto_install:
+	# Server package
+	install -D -m 0755 _build/default/src/freetube/main.exe \
+		debian/freetube/usr/bin/freetube
+	install -D -m 0755 _build/default/src/bin/freetube_client.exe \
+		debian/freetube/usr/bin/freetube_client
+	# Config directory
+	install -d -m 0755 debian/freetube/etc/freetube
+	install -d -m 0755 debian/freetube/etc/freetube/devices
+	# Plugin package
+	install -d debian/freetube-plugin/usr/share/freetube-plugin
+	cp -a plugin/dist/* debian/freetube-plugin/usr/share/freetube-plugin/
+
+override_dh_auto_clean:
+	rm -rf debian/.opam _build plugin/dist
+
+override_dh_dwz:
+	# OCaml binaries have non-standard DWARF; skip dwz

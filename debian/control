@@ -1,0 +1,45 @@
+Source: freetube
+Section: video
+Priority: optional
+Maintainer: Anders Fugmann <anders@fugmann.net>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-sysuser,
+ opam,
+ ocaml (>= 5.1),
+ dune (>= 3.0),
+ pkg-config,
+ libgmp-dev,
+ libffi-dev,
+ libev-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/andersfugmann/freetube
+
+Package: freetube
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ systemd
+Pre-Depends:
+ ${misc:Pre-Depends}
+Description: YouTube streaming and casting service
+ FreeTube is an OCaml-based YouTube streaming service with DLNA and
+ AirPlay casting support. It provides an HTTP API for browsing YouTube
+ content and casting to network media devices.
+ .
+ This package contains the freetube server daemon and the freetube_client
+ command-line tool.
+
+Package: freetube-plugin
+Architecture: all
+Depends:
+ ${misc:Depends}
+Recommends:
+ freetube
+Description: FreeTube browser extension (Chrome/Edge MV3)
+ Browser extension for casting YouTube videos to FreeTube devices.
+ .
+ This package installs the unpacked Chrome/Edge extension into
+ /usr/share/freetube-plugin. Load it as an unpacked extension from
+ chrome://extensions.

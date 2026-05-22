@@ -1,0 +1,12 @@
+(library
+ (name youtube)
+ (libraries util config base eio eio.unix eio_main yojson logs memfd stdio codec uri piaf api)
+ (modules video_info extract fetcher youtube)
+ (inline_tests (deps testdata.json (glob_files ../../static/sample/wildlife/*)))
+ (preprocess
+ (pps ppx_deriving_yojson ppx_deriving.show ppx_compare ppx_inline_test ppx_expect)))
+
+(executable
+ (name yt_probe)
+ (modules yt_probe)
+ (libraries base youtube eio_main stdio))

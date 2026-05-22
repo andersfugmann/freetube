@@ -1,0 +1,14 @@
+(library
+ (name freetube)
+ (modules (:standard \ main log_config))
+ (libraries util config base eio eio.unix piaf routes yojson logs uri unix xdg stdio
+   airplay airplay_protocol dlna dlna_protocol device devices stream youtube api)
+ (inline_tests)
+ (preprocess (pps ppx_deriving_yojson ppx_inline_test ppx_expect)))
+
+(executable
+ (name main)
+ (public_name freetube)
+ (modules main log_config)
+ (libraries freetube util base eio eio_main airplay_protocol
+   mirage-crypto-rng.unix unix fmt logs logs.fmt devices stream))
