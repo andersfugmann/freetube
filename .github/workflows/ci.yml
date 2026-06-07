@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam ocaml pkg-config libgmp-dev libffi-dev libev-dev
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-${{ runner.os }}-${{ hashFiles('freetube.opam') }}
+          restore-keys: opam-${{ runner.os }}-
+
+      - name: Setup opam
+        run: |
+          opam init --bare --no-setup --disable-sandboxing
+          opam switch create . ocaml-system --no-install || true
+          opam install . --deps-only --with-test --yes
+
+      - name: Build
+        run: opam exec -- make build
+
+      - name: Test
+        run: opam exec -- make test

@@ -1,0 +1,185 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Release version (semver, e.g. 1.2.3). If empty, the minor version is bumped from the last release.
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          previous="${latest_tag#v}"
+          if [ -z "$previous" ]; then
+            previous="0.0.0"
+          fi
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
+          else
+            IFS='.' read -r major minor patch <<< "$previous"
+            version="${major}.$((minor + 1)).0"
+          fi
+
+          # Validate semver format
+          if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Invalid version format: $version (expected X.Y.Z)"
+            exit 1
+          fi
+
+          # Check version is not lower than previous
+          IFS='.' read -r new_major new_minor new_patch <<< "$version"
+          IFS='.' read -r old_major old_minor old_patch <<< "$previous"
+          new_num=$((new_major * 1000000 + new_minor * 1000 + new_patch))
+          old_num=$((old_major * 1000000 + old_minor * 1000 + old_patch))
+          if [ "$new_num" -le "$old_num" ]; then
+            echo "::error::Version $version is not greater than previous version $previous"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Release version: $version (previous: $previous)"
+
+      - name: Generate changelog
+        id: changelog
+        uses: actions/github-script@v7
+        env:
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const previousTag = process.env.PREVIOUS_TAG;
+            const version = process.env.VERSION;
+
+            // Get commits since last release
+            let commits;
+            if (previousTag) {
+              const compare = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: previousTag,
+                head: 'HEAD',
+              });
+              commits = compare.data.commits.map(c => `- ${c.commit.message.split('\n')[0]}`).join('\n');
+            } else {
+              const log = await github.rest.repos.listCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 50,
+              });
+              commits = log.data.map(c => `- ${c.commit.message.split('\n')[0]}`).join('\n');
+            }
+
+            // Use AI to generate changelog summary
+            const response = await github.rest.repos.getContent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: 'ARCHITECTURE.md',
+            }).catch(() => null);
+
+            const prompt = `Generate a concise, user-facing changelog for version ${version} based on these commits:\n\n${commits}\n\nGroup changes by category (Features, Fixes, Other). Omit merge commits and CI-only changes. Use bullet points.`;
+
+            // Try GitHub Models for changelog generation
+            let changelog;
+            try {
+              const result = await github.request('POST /models/chat/completions', {
+                model: 'gpt-4o-mini',
+                messages: [
+                  { role: 'system', content: 'You are a changelog generator. Output only the changelog in markdown, no preamble.' },
+                  { role: 'user', content: prompt },
+                ],
+              });
+              changelog = result.data.choices[0].message.content;
+            } catch (e) {
+              core.warning(`AI changelog generation failed (${e.message}), falling back to commit list`);
+              changelog = `## What's Changed\n\n${commits}`;
+            }
+
+            core.setOutput('changelog', changelog);
+            return changelog;
+          result-encoding: string
+
+      - name: Update debian changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHANGELOG: ${{ steps.changelog.outputs.result }}
+        run: |
+          # Format changelog entries for debian
+          formatted=$(echo "$CHANGELOG" | sed 's/^/  /')
+          date=$(date -R)
+          cat > debian/changelog <<EOF
+          freetube (${VERSION}-1) unstable; urgency=medium
+
+          ${formatted}
+
+           -- Anders Fugmann <anders@fugmann.net>  ${date}
+
+          EOF
+          # Remove leading spaces from heredoc
+          sed -i 's/^          //' debian/changelog
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam ocaml pkg-config libgmp-dev libffi-dev libev-dev devscripts debhelper dh-sysuser
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-${{ runner.os }}-${{ hashFiles('freetube.opam') }}
+          restore-keys: opam-${{ runner.os }}-
+
+      - name: Setup opam
+        run: |
+          opam init --bare --no-setup --disable-sandboxing
+          opam switch create . ocaml-system --no-install || true
+          opam install . --deps-only --with-test --yes
+
+      - name: Build
+        run: opam exec -- make build
+
+      - name: Test
+        run: opam exec -- make test
+
+      - name: Build debian packages
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Commit version bump and create tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add debian/changelog
+          git commit -m "Release v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin HEAD "v${VERSION}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.result }}
+          files: |
+            ../freetube_${{ steps.version.outputs.version }}-1_*.deb
+            ../freetube-plugin_${{ steps.version.outputs.version }}-1_*.deb
