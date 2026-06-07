@@ -37,7 +37,7 @@ Requires OCaml 5.3+ via opam.
 
 ```sh
 # Create a local switch and install dependencies
-opam switch create . ocaml-base-compiler.5.3.0
+opam switch create . ocaml-base-compiler.5.4.1
 eval $(opam env)
 opam install . --deps-only --with-test
 

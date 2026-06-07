@@ -29,7 +29,7 @@ jobs:
       - name: Setup opam
         run: |
           opam init --bare --no-setup --disable-sandboxing
-          opam switch create . ocaml-base-compiler.5.3.0 || true
+          opam switch create . ocaml-base-compiler.5.4.1 || true
           eval $(opam env)
           opam install . --deps-only --with-test --yes
 
