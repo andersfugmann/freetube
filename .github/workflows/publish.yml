@@ -142,7 +142,7 @@ jobs:
           sudo apt-get install -y opam pkg-config libgmp-dev libffi-dev libev-dev devscripts debhelper dh-sysuser
 
       - name: Build debian packages
-        run: dpkg-buildpackage -us -uc -b
+        run: dpkg-buildpackage -us -uc -b -d
 
       - name: Commit version bump and create tag
         env:
