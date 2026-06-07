@@ -7,9 +7,6 @@ type selection =
   | Muxed of Youtube.Video_info.Stream.t
   | Separate of { video : Youtube.Video_info.Stream.t; audio : Youtube.Video_info.Stream.t }
 
-let max_width () = (Config.get ()).video.max_width
-let max_height () = (Config.get ()).video.max_height
-
 type _ compare =
   | Cmp: (Youtube.Video_info.Stream.t -> 'key) * ('key -> 'key -> int) * [ `Asc | `Desc ] -> int compare
 
@@ -103,15 +100,15 @@ let compare_audio =
 
 
 (* Main entry point *)
-let select ~video_codecs ~audio_codecs streams =
+let select ~video_codecs ~audio_codecs ~max_width ~max_height streams =
   let usable (s: Youtube.Video_info.Stream.t) =
     let video_ok =
       match s.vcodec with
       | None -> true
       | Some (codec, _) ->
           List.mem video_codecs codec ~equal:Codec.Video.equal
-          && Option.value_map ~default:false ~f:(fun w -> w <= max_width ()) s.width
-          && Option.value_map ~default:false ~f:(fun h -> h <= max_height ()) s.height
+          && Option.value_map ~default:false ~f:(fun w -> w <= max_width) s.width
+          && Option.value_map ~default:false ~f:(fun h -> h <= max_height) s.height
     in
     let audio_ok =
       match s.acodec with
@@ -220,7 +217,8 @@ let%expect_test "prefers separate over muxed when both viable" =
     stream ~format_id:"mux" ~url:"u/m" ~vcodec:"avc1.640028" ~acodec:"mp4a.40.2"
       ~width:1280 ~height:720 ~tbr:3000.0 ();
   ] in
-  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Opus; Codec.Audio.Aac] streams in
+  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Opus; Codec.Audio.Aac]
+    ~max_width:3840 ~max_height:2160 streams in
   Stdio.printf "%s\n" (describe r);
   [%expect {| separate v=avc1.640028@1920x1080 a=opus |}]
 
@@ -229,7 +227,8 @@ let%expect_test "falls back to muxed when no separate video/audio available" =
     stream ~format_id:"mux" ~url:"u/m" ~vcodec:"avc1.640028" ~acodec:"mp4a.40.2"
       ~width:1280 ~height:720 ~tbr:3000.0 ();
   ] in
-  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Aac] streams in
+  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Aac]
+    ~max_width:3840 ~max_height:2160 streams in
   Stdio.printf "%s\n" (describe r);
   [%expect {| muxed u/m v=avc1.640028 a=mp4a.40.2 1280x720 |}]
 
@@ -239,7 +238,8 @@ let%expect_test "drops streams above 4K" =
     stream ~format_id:"4k" ~url:"u/4k" ~vcodec:"av01.0.12M.08" ~width:3840 ~height:2160 ~tbr:20000.0 ();
     stream ~format_id:"aud" ~url:"u/a" ~acodec:"opus" ~abr:160.0 ();
   ] in
-  let r = select ~video_codecs:[Codec.Video.Av1] ~audio_codecs:[Codec.Audio.Opus] streams in
+  let r = select ~video_codecs:[Codec.Video.Av1] ~audio_codecs:[Codec.Audio.Opus]
+    ~max_width:3840 ~max_height:2160 streams in
   Stdio.printf "%s\n" (describe r);
   [%expect {| separate v=av01.0.12M.08@3840x2160 a=opus |}]
 
@@ -249,7 +249,8 @@ let%expect_test "filters by device codec capability" =
     stream ~format_id:"h264" ~url:"u/h264" ~vcodec:"avc1.640028" ~width:1920 ~height:1080 ~tbr:5000.0 ();
     stream ~format_id:"aud" ~url:"u/a" ~acodec:"mp4a.40.2" ~abr:128.0 ();
   ] in
-  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Aac] streams in
+  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Aac]
+    ~max_width:3840 ~max_height:2160 streams in
   Stdio.printf "%s\n" (describe r);
   [%expect {| separate v=avc1.640028@1920x1080 a=mp4a.40.2 |}]
 
@@ -260,7 +261,8 @@ let%expect_test "prefers HDR at same resolution" =
     stream ~format_id:"sdr" ~url:"u/sdr" ~vcodec:"vp09.00.51.08" ~width:3840 ~height:2160 ~tbr:20000.0 ();
     stream ~format_id:"aud" ~url:"u/a" ~acodec:"opus" ~abr:160.0 ();
   ] in
-  let r = select ~video_codecs:[Codec.Video.Vp9] ~audio_codecs:[Codec.Audio.Opus] streams in
+  let r = select ~video_codecs:[Codec.Video.Vp9] ~audio_codecs:[Codec.Audio.Opus]
+    ~max_width:3840 ~max_height:2160 streams in
   Stdio.printf "%s\n" (describe r);
   [%expect {| separate v=vp09.02.51.10@3840x2160 a=opus |}]
 
@@ -269,7 +271,8 @@ let%expect_test "no compatible stream returns None" =
     stream ~format_id:"av1" ~url:"u/av1" ~vcodec:"av01.0.08M.08" ~width:1920 ~height:1080 ();
     stream ~format_id:"aud" ~url:"u/a" ~acodec:"opus" ~abr:160.0 ();
   ] in
-  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Aac] streams in
+  let r = select ~video_codecs:[Codec.Video.Avc] ~audio_codecs:[Codec.Audio.Aac]
+    ~max_width:3840 ~max_height:2160 streams in
   Stdio.printf "%s\n" (describe r);
   [%expect {| none |}]
 
@@ -280,7 +283,7 @@ let%expect_test "selects from real yt-dlp testdata" =
   | Error e -> Stdio.printf "Error: %s" e
   | Ok detail ->
       let pick ~name vc ac =
-        let r = select ~video_codecs:vc ~audio_codecs:ac detail.streams in
+        let r = select ~video_codecs:vc ~audio_codecs:ac ~max_width:3840 ~max_height:2160 detail.streams in
         Stdio.printf "%s: %s\n" name (describe r)
       in
       pick ~name:"apple-tv" [Codec.Video.Hevc; Codec.Video.Avc] [Codec.Audio.Aac];

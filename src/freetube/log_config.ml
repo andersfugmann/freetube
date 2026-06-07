@@ -39,7 +39,7 @@ let reporter () =
 
 let init () =
   Logs.set_reporter (reporter ());
-  Logs.set_level (Some Logs.Debug);
+  Logs.set_level (Some Logs.Info);
   List.iter (Logs.Src.list ()) ~f:(fun src ->
       List.find overrides ~f:(fun (name, _) -> String.equal name (Logs.Src.name src))
       |> Option.iter ~f:(fun (_, level) -> Logs.Src.set_level src level);

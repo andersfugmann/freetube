@@ -340,9 +340,7 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
     match body.sink with
     | None -> None
     | Some device_id ->
-        match Devices_handler.find
-                ~airplay_cache:app.airplay_cache
-                ~dlna_cache:app.dlna_cache ~id:device_id with
+        match Device_store.find app.device_store ~id:device_id with
         | Some e -> Some e
         | None ->
             Json_io.raise_http `Not_found
@@ -363,12 +361,23 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
       | Some e -> e.stream_format
       | None -> Api.Stream_format.Hls
   in
-  let transcode = match (Config.get ()).transcode with
-    | false -> false
-    | true ->
+  let transcode =
+    let transcode =
       match entry with
       | Some e -> e.transcode
       | None -> not (List.mem video_codecs Codec.Video.Av1 ~equal:Codec.Video.equal)
+    in
+    transcode && (Config.get ()).transcode
+  in
+  let max_width =
+    match entry with
+    | Some e -> e.max_width
+    | None -> (Config.get ()).video.max_width
+  in
+  let max_height =
+    match entry with
+    | Some e -> e.max_height
+    | None -> (Config.get ()).video.max_height
   in
   let content_factory =
     match body.source with
@@ -379,13 +388,13 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
       fun ~sw ->
         let fetch = Youtube.Fetcher.of_yt_dlp ~env ~cookies ~video_id:id in
         let youtube = Youtube.init fetch in
-        Session.Stream (Stream.Source.init ~env ~sw ~video_codecs ~audio_codecs ~transcode youtube)
+        Session.Stream (Stream.Source.init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode youtube)
     | Youtube_file uri ->
       Log.info (fun m -> m "create session from url=%s" (Uri.to_string uri));
       fun ~sw ->
         let fetch = Youtube.Fetcher.of_url ~env ~sw uri in
         let youtube = Youtube.init fetch in
-        Session.Stream (Stream.Source.init ~env ~sw ~video_codecs ~audio_codecs ~transcode youtube)
+        Session.Stream (Stream.Source.init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode youtube)
     | Url uri ->
       fun ~sw:_ -> Session.Direct uri
   in
@@ -410,7 +419,7 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
    | _ -> ());
   let sink_factory =
     match entry with
-    | None -> fun ~sw:_ -> Sink.Url_consumer
+    | None -> fun ~sw:_ ~content:_ -> Sink.Url_consumer
     | Some e ->
       let sink_filename =
         match body.source with
@@ -420,10 +429,19 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
           | Api.Stream_format.Hls  -> Printf.sprintf "sessions/%s/master.m3u8" session_id
           | Dash -> Printf.sprintf "sessions/%s/dash.mpd" session_id
       in
-      fun ~sw ->
-        let title = "FreeTube" in
+      fun ~sw ~content ->
+        let title, duration_seconds, resolution, is_live =
+          match content with
+          | Session.Stream source ->
+              Stream.Source.title source,
+              Some (Stream.Source.duration_seconds source),
+              Stream.Source.resolution source,
+              Stream.Source.is_live source
+          | Direct _ -> "FreeTube", None, None, false
+        in
         let sink, content_url =
-          sink_of_device ~env ~sw ~app ~filename:sink_filename ~title e
+          sink_of_device ~env ~sw ~app ~filename:sink_filename ~title
+            ?duration_seconds ?resolution ~is_live e
         in
         (match Sink.play sink ~url:content_url with
          | Ok () -> sink
@@ -467,6 +485,7 @@ let%expect_test "effective_codecs: device when no override" =
     id = "x"; friendly_name = "tv"; vendor = Vendor.Generic;
     stream_format = Api.Stream_format.Hls;
     transcode = false;
+    max_width = 3840; max_height = 2160;
     last_seen = 0.;
     video_codecs = [ Codec.Video.Avc ];
     audio_codecs = [ Codec.Audio.Aac ];
@@ -487,6 +506,7 @@ let%expect_test "effective_codecs: request overrides device" =
     id = "x"; friendly_name = "tv"; vendor = Vendor.Generic;
     stream_format = Api.Stream_format.Hls;
     transcode = false;
+    max_width = 3840; max_height = 2160;
     last_seen = 0.;
     video_codecs = [ Codec.Video.Avc ];
     audio_codecs = [ Codec.Audio.Aac ];

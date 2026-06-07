@@ -58,14 +58,14 @@ let create_session ~server ~req ~k =
 let get_device_config ~server ~id ~k =
   Chrome.Fetch.get ~url:(join server (Printf.sprintf "/devices/%s/config" id))
     ~k_ok:(fun body ->
-      k (Result.map (decode_body Api.Config_device.of_yojson body) ~f:Option.some))
+      k (Result.map (decode_body Device.of_yojson body) ~f:Option.some))
     ~k_err:(fun status body ->
       match status with
       | 404 -> k (Ok None)
       | _ -> k (Error (Printf.sprintf "HTTP %d: %s" status body)))
 
 let put_device_config ~server ~id ~cfg ~k =
-  let body = Yojson.Safe.to_string (Api.Config_device.to_yojson cfg) in
+  let body = Yojson.Safe.to_string (Device.to_yojson cfg) in
   Chrome.Fetch.send ~meth:"PUT" ~body
     ~url:(join server (Printf.sprintf "/devices/%s/config" id))
     ~k_ok:(fun _ -> k (Ok ()))

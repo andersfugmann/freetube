@@ -15,7 +15,7 @@ let load_file path =
     Result.try_with (fun () ->
       Stdio.In_channel.read_all path
       |> Yojson.Safe.from_string
-      |> Api.Config_device.of_yojson)
+      |> Device.of_yojson)
   with
   | Ok (Ok t) -> Some t
   | Ok (Error msg) ->
@@ -26,7 +26,7 @@ let load_file path =
         m "Failed to read %s: %s — skipping" path (Exn.to_string exn));
       None
 
-type t = Api.Config_device.t list ref
+type t = Device.t list ref
 
 let create () : t =
   let dir = dir () in
@@ -45,22 +45,20 @@ let create () : t =
 let all (t : t) = !t
 
 let find (t : t) ~id =
-  List.find !t ~f:(fun (d : Api.Config_device.t) ->
+  List.find !t ~f:(fun (d : Device.t) ->
     String.equal d.id id)
 
-let static_entries (t : t) =
-  List.filter !t ~f:(fun (d : Api.Config_device.t) -> d.is_static)
 
-let save (t : t) (device : Api.Config_device.t) =
+let save (t : t) (device : Device.t) =
   Mkdir_p.ensure (dir ());
   let path = path_for ~id:device.id in
   let tmp = path ^ ".tmp" in
   let data =
-    Api.Config_device.to_yojson device |> Yojson.Safe.pretty_to_string
+    Device.to_yojson device |> Yojson.Safe.pretty_to_string
   in
   Stdio.Out_channel.write_all tmp ~data;
   Stdlib.Sys.rename tmp path;
-  t := device :: List.filter !t ~f:(fun (d : Api.Config_device.t) ->
+  t := device :: List.filter !t ~f:(fun (d : Device.t) ->
     not (String.equal d.id device.id))
 
 let remove (t : t) ~id =
@@ -68,5 +66,5 @@ let remove (t : t) ~id =
   (match Stdlib.Sys.file_exists path with
    | true -> (try Stdlib.Sys.remove path with _ -> ())
    | false -> ());
-  t := List.filter !t ~f:(fun (d : Api.Config_device.t) ->
+  t := List.filter !t ~f:(fun (d : Device.t) ->
     not (String.equal d.id id))

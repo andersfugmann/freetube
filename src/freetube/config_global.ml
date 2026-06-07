@@ -8,8 +8,10 @@ let path () =
   Stdlib.Filename.concat (Xdg.config_dir xdg) "freetube/config.json"
 
 let save t =
+  let p = path () in
+  Mkdir_p.ensure (Stdlib.Filename.dirname p);
   let json = Config.to_yojson t |> Yojson.Safe.pretty_to_string in
-  Stdio.Out_channel.write_all (path ()) ~data:json
+  Stdio.Out_channel.write_all p ~data:json
 
 let update f =
   let t = f (Config.get ()) in
@@ -21,7 +23,9 @@ let load () =
   let path = path () in
   let t =
     match Stdlib.Sys.file_exists path with
-    | false -> Config.default
+    | false ->
+      save Config.default;
+      Config.default
     | true ->
       match
         Result.try_with (fun () -> Stdio.In_channel.read_all path)

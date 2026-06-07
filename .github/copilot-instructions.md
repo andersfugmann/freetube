@@ -42,6 +42,7 @@ FreeTube is an OCaml-based YouTube streaming service built on Eio (structured co
 - ADT constructors that carry no useful information should be nullary (e.g. `Unknown` not `Unknown of string` if the string is never acted on).
 - Prefer `String.split` and matching the full segment list over repeated `lsplit2` calls.
 - For option-typed fields with a sentinel value (like `"none"` meaning absent), fold the option into the custom `of_yojson` — return `Ok None` directly rather than returning `Error` and relying on external wrapping.
+- Avoid `option` types when the value is always expected to be present. Use `option` only when `None` carries genuine semantic meaning distinct from any concrete value. Never use `option` as a lazy substitute for ensuring data is available — restructure the code so the value is in scope when needed.
 
 ### Control Flow
 
@@ -98,7 +99,7 @@ FreeTube is an OCaml-based YouTube streaming service built on Eio (structured co
 - `ARCHITECTURE.md` (top-level) describes the layered design, session model, producer/consumer split, discovery, HTTP layer, and concurrency model.
 - `API.md` (top-level) documents every HTTP endpoint with request/response shapes.
 - `docs/protocols/` holds protocol-level notes (AirPlay, DLNA, HLS).
-- Runtime config lives under `$XDG_CONFIG_HOME/freetube/`: `config.json` (global) + `devices/<slug>.json` (per-device, slug from friendly name). All optional fields; bad files are logged and deleted. Per-device entries merge into the matching discovery entry at scan time; `is_static: true` entries are seeded into the cache. Brand overrides ride on `Sink.t` and are applied at HTTP-response time via `Bmff.maybe_set_major_brand`.
+- Runtime config lives under `$XDG_CONFIG_HOME/freetube/`: `config.json` (global) + `devices/<slug>.json` (per-device, slug from friendly name). Bad files are logged and deleted. Per-device entries are updated on discovery scans and user edits. Brand overrides ride on `Sink.t` and are applied at HTTP-response time via `Bmff.maybe_set_major_brand`.
 - **Before designing or changing anything in those areas, read the relevant doc first.** When a change alters the architecture, session/sink model, HTTP surface, or a documented protocol behaviour, update the corresponding doc in the same commit. Docs are part of the change, not follow-up work.
 
 ### Naming & Documentation

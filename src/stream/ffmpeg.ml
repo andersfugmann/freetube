@@ -3,7 +3,6 @@ open Util
 
 module Log = (val Log_src.src_log ~doc:"FFmpeg transcoding runner" Stdlib.__MODULE__)
 
-let default_vaapi_device = "/dev/dri/renderD128"
 let max_segment_output = 64 * 1024 * 1024
 
 let read_all flow =
@@ -29,8 +28,9 @@ let video_encoder_name = function
 
 let video_args ~input_format params =
   let encoder = video_encoder_name params.video_codec in
-  let vaapi_device =
-    Option.value (Config.get ()).gpu_device ~default:default_vaapi_device
+  let device_args = match (Config.get ()).gpu_device with
+    | Some device -> ["-hwaccel_device"; device]
+    | None -> []
   in
   let tonemap_filter = match params.dynamic_range with
     | Passthrough -> []
@@ -38,11 +38,11 @@ let video_args ~input_format params =
       ["-vf"; "scale_vaapi=format=nv12:out_color_transfer=bt709:out_color_matrix=bt709:out_color_primaries=bt709"]
   in
   [ "-hwaccel"; "vaapi";
-    "-hwaccel_output_format"; "vaapi";
-    "-hwaccel_device"; vaapi_device;
-    "-f"; input_format;
-    "-i"; "pipe:0";
-    "-an" ]
+    "-hwaccel_output_format"; "vaapi" ]
+  @ device_args
+  @ [ "-f"; input_format;
+      "-i"; "pipe:0";
+      "-an" ]
   @ tonemap_filter
   @ [ "-c:v"; encoder;
       "-qp"; "26";

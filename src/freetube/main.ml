@@ -10,8 +10,6 @@ let () =
   let clock = Eio.Stdenv.clock env in
   let global = Freetube.Config_global.load () in
   let device_store = Device_store.create () in
-  let cache = Discovery_dlna.create ~clock ~device_store () in
-  let airplay_cache = Discovery_airplay.create ~device_store () in
   Eio.Switch.run @@ fun sw ->
   let ntp =
     Airplay_protocol.Ntp_server.start ~sw ~net:(Eio.Stdenv.net env)
@@ -20,15 +18,15 @@ let () =
   Eio.Fiber.all
     [
       (fun () ->
-        Discovery_dlna.run ~env ~cache
+        Discovery_dlna.run ~env ~device_store
           ~interval:global.discovery.dlna_interval_seconds);
       (fun () ->
-        Discovery_airplay.run ~env ~cache:airplay_cache
+        Discovery_airplay.run ~env ~device_store
           ~interval:global.discovery.airplay_interval_seconds);
       (fun () ->
         Freetube.Mdns_advertise.run ~sw ~net:(Eio.Stdenv.net env)
           ~port:global.listen_port);
       (fun () ->
         Freetube.Server.start ~env ~port:global.listen_port
-          ~static_root ~cache ~airplay_cache ~device_store ~ntp ~sw);
+          ~static_root ~device_store ~ntp ~sw);
     ]

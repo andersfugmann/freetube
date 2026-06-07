@@ -38,7 +38,7 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
         input_format : string;
         video_params : Ffmpeg.video_params option;
         audio_params : Ffmpeg.audio_params option;
-        mutex : Eio.Mutex.t;
+        semaphore : Eio.Semaphore.t;
         mutable init_seg : string option;
         mutable input_timescale : int;
         mutable output_timescale : int;
@@ -69,7 +69,8 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
           failwith "transcode: muxed not supported"
       in
       Transcode { inner; env; input_format; video_params; audio_params;
-                  mutex = Eio.Mutex.create (); init_seg = None;
+                  semaphore = Eio.Semaphore.make (Config.get ()).max_ffmpeg_per_stream;
+                  init_seg = None;
                   input_timescale = 0; output_timescale = 0 },
       Producer.Shape.with_container target Producer.Container.Mp4
 
@@ -77,8 +78,9 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
     | Passthrough inner -> M.meta inner
     | Transcode { inner; _ } -> M.meta inner
 
-  let run_transcode ~env ~input_format ~video_params ~audio_params ~mutex input =
-    Eio.Mutex.use_rw ~protect:false mutex (fun () ->
+  let run_transcode ~env ~input_format ~video_params ~audio_params ~semaphore input =
+    Eio.Semaphore.acquire semaphore;
+    Exn.protect ~finally:(fun () -> Eio.Semaphore.release semaphore) ~f:(fun () ->
       match video_params with
       | Some params -> Ffmpeg.transcode_video ~env ~input_format ~params input
       | None ->
@@ -102,7 +104,7 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
         let output =
           run_transcode ~env:s.env ~input_format:s.input_format
             ~video_params:s.video_params ~audio_params:s.audio_params
-            ~mutex:s.mutex input
+            ~semaphore:s.semaphore input
         in
         let init_data, _ = split_init_and_segment output in
         s.output_timescale <- Bmff.mdhd_timescale init_data;
@@ -132,7 +134,7 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
       let output =
         run_transcode ~env:s.env ~input_format:s.input_format
           ~video_params:s.video_params ~audio_params:s.audio_params
-          ~mutex:s.mutex input
+          ~semaphore:s.semaphore input
       in
       let elapsed = Unix.gettimeofday () -. t0 in
       let seg_duration = Float.of_int upstream_seg.length_usec /. 1_000_000. in

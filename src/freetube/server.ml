@@ -100,14 +100,12 @@ let start_server ~address ~sw ~env ~handler ~error_handler =
   let command = Piaf.Server.Command.start ~sw env server in
   command
 
-let start ~env ~port ~static_root ~cache ~airplay_cache ~device_store ~ntp ~sw =
+let start ~env ~port ~static_root ~device_store ~ntp ~sw =
   let sessions = Sessions.init () in
   let clock = Eio.Stdenv.clock env in
   let global = Config.get () in
   let app : _ App.t = {
     env; sw; port; static_root;
-    dlna_cache = cache;
-    airplay_cache;
     device_store;
     global;
     sessions;

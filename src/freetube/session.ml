@@ -17,7 +17,7 @@ type t = {
   created_at: float;
   mutable last_accessed_at : float;
   content_factory: sw:Eio.Switch.t -> content;
-  sink_factory: sw:Eio.Switch.t -> Sink.t;
+  sink_factory: sw:Eio.Switch.t -> content:content -> Sink.t;
   mutable content: content option;
   mutable sink: Sink.t;
   mutable sw: Eio.Switch.t option;
@@ -223,7 +223,8 @@ let run t ~on_terminate =
       Eio.Switch.run (fun sw ->
         Eio.Switch.on_release sw (fun () -> close t);
         t.sw <- Some sw;
-        t.sink <- t.sink_factory ~sw;
+        let content = ensure_content t in
+        t.sink <- t.sink_factory ~sw ~content;
         start_activity_monitor ~sw t;
         start_sink_monitor ~sw t;
         Eio.Fiber.await_cancel ())

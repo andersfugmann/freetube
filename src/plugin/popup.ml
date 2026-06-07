@@ -81,7 +81,6 @@ let html_escape s =
 
 let video_all : Codec.Video.t list = [ Av1; Hevc; Vp9; Avc ]
 let audio_all : Codec.Audio.t list = [ Opus; Aac; Flac; Vorbis ]
-let vendor_all : Api.Vendor.t list = [ Generic; Apple; Samsung; Lg ]
 
 (* ── Device list ───────────────────────────────────────────────────── *)
 
@@ -213,12 +212,6 @@ let render_codec_checks ~prefix ~kind_attr ~all ~to_string ~selected ~equal =
          prefix kind_attr s kind_attr
          (if on then " checked" else "") s))
 
-let render_vendor_options ~(selected : Api.Vendor.t) =
-  String.concat ~sep:""
-    (List.map vendor_all ~f:(fun v ->
-       let s = Api.Vendor.to_string v in
-       let sel = if Api.Vendor.equal v selected then " selected" else "" in
-       Printf.sprintf "<option value=\"%s\"%s>%s</option>" s sel s))
 
 let info_lines (d : Device.t) =
   let row k v =
@@ -293,13 +286,19 @@ let render_detail ~server (d : Device.t) ~back =
         <div class=\"checks\" id=\"vbox\">%s</div>\
         <label class=\"lbl\">Audio codecs</label>\
         <div class=\"checks\" id=\"abox\">%s</div>\
-        <label class=\"lbl\" for=\"%svendor\">Vendor</label>\
-        <select id=\"%svendor\">%s</select>\
         <label class=\"lbl\" for=\"%sstream_format\">Stream format</label>\
         <select id=\"%sstream_format\">%s</select>\
         <label class=\"lbl\">Options</label>\
         <div><label><input type=\"checkbox\" id=\"%stranscode\"/> \
              Allow transcode</label></div>\
+        <label class=\"lbl\">Resolution limit (blank = global default)</label>\
+        <div class=\"row\">\
+          <input type=\"number\" id=\"%smax_width\" placeholder=\"width\" \
+                 value=\"%s\" style=\"width:80px;\"/>\
+          <span>×</span>\
+          <input type=\"number\" id=\"%smax_height\" placeholder=\"height\" \
+                 value=\"%s\" style=\"width:80px;\"/>\
+        </div>\
         <div class=\"row\" style=\"margin-top:10px;\">\
           <button id=\"cfg-save\">Save</button>\
           <button class=\"secondary\" id=\"cfg-cancel\">Cancel</button>\
@@ -309,14 +308,16 @@ let render_detail ~server (d : Device.t) ~back =
        (html_escape friendly) kind
        (info_lines d)
        (render_codec_checks ~prefix ~kind_attr:"v" ~all:video_all
-          ~to_string:Codec.Video.to_string ~selected:default_v
-          ~equal:Codec.Video.equal)
+         ~to_string:Codec.Video.to_string ~selected:default_v
+         ~equal:Codec.Video.equal)
        (render_codec_checks ~prefix ~kind_attr:"a" ~all:audio_all
-          ~to_string:Codec.Audio.to_string ~selected:default_a
-          ~equal:Codec.Audio.equal)
-       prefix prefix (render_vendor_options ~selected:d.vendor)
+         ~to_string:Codec.Audio.to_string ~selected:default_a
+         ~equal:Codec.Audio.equal)
        prefix prefix (render_stream_format_options ~selected:d.stream_format)
-       prefix pair_button);
+       prefix
+       prefix (Int.to_string d.max_width)
+       prefix (Int.to_string d.max_height)
+       pair_button);
   set_display "view-main" "none";
   set_display "view-detail" "block";
   (match is_airplay with
@@ -333,16 +334,19 @@ let render_detail ~server (d : Device.t) ~back =
     List.filter audio_all ~f:(fun c ->
       get_checked (prefix ^ "a-" ^ Codec.Audio.to_string c))
   in
-  let prepop (cfg : Api.Config_device.t) =
+  let prepop (cfg : Device.t) =
     List.iter video_all ~f:(fun c ->
       set_checked (prefix ^ "v-" ^ Codec.Video.to_string c)
         (List.mem cfg.video_codecs c ~equal:Codec.Video.equal));
     List.iter audio_all ~f:(fun c ->
       set_checked (prefix ^ "a-" ^ Codec.Audio.to_string c)
         (List.mem cfg.audio_codecs c ~equal:Codec.Audio.equal));
-    set_input_value (prefix ^ "vendor") (Api.Vendor.to_string cfg.vendor);
     set_input_value (prefix ^ "stream_format") (Api.Stream_format.to_string cfg.stream_format);
-    set_checked (prefix ^ "transcode") cfg.transcode
+    set_checked (prefix ^ "transcode") cfg.transcode;
+    set_input_value (prefix ^ "max_width")
+      (Int.to_string cfg.max_width);
+    set_input_value (prefix ^ "max_height")
+      (Int.to_string cfg.max_height)
   in
   Api_client.get_device_config ~server ~id:d.id ~k:(function
     | Error e -> log ("config load failed: " ^ e)
@@ -352,33 +356,23 @@ let render_detail ~server (d : Device.t) ~back =
   on_click "back" back;
   on_click "cfg-cancel" back;
   on_click "cfg-save" (fun () ->
-    let vendor =
-      match
-        Option.bind (get_select (prefix ^ "vendor")) ~f:(fun s ->
-          List.find vendor_all ~f:(fun v ->
-            String.equal (Api.Vendor.to_string v) s))
-      with
-      | Some v -> v
-      | None -> d.vendor
-    in
     let stream_format =
       match get_select (prefix ^ "stream_format") with
       | Some "dash" -> Api.Stream_format.Dash
       | _ -> Api.Stream_format.Hls
     in
-    let cfg : Api.Config_device.t =
+    let cfg : Device.t =
       { id = d.id
       ; friendly_name = friendly
+      ; client = d.client
       ; video_codecs = collect_video ()
       ; audio_codecs = collect_audio ()
-      ; vendor
-      ; is_static = false
-      ; kind = None
-      ; address = None
-      ; port = None
-      ; control_url = None
+      ; vendor = d.vendor
       ; transcode = get_checked (prefix ^ "transcode")
+      ; max_width = Option.value (Int.of_string_opt (get_input_value (prefix ^ "max_width"))) ~default:3840
+      ; max_height = Option.value (Int.of_string_opt (get_input_value (prefix ^ "max_height"))) ~default:2160
       ; stream_format
+      ; last_seen = d.last_seen
       }
     in
     (match by_id "cfg-status" with
@@ -490,6 +484,8 @@ let render_settings ~server ~back =
            ; "<div class=\"section\"><div class=\"section-title\">General</div>"
            ; checkbox_field ~id:"g-transcode" ~label:"Allow transcode"
                ~checked:cfg.transcode
+           ; number_field ~id:"g-ffmpeg" ~label:"Max ffmpeg per stream"
+               ~value:(Int.to_string cfg.max_ffmpeg_per_stream)
            ; text_field ~id:"g-gpu" ~label:"GPU device (blank = auto)"
                ~value:(Option.value cfg.gpu_device ~default:"")
            ; "</div>"
@@ -509,6 +505,7 @@ let render_settings ~server ~back =
           session_ttl_seconds = cfg.session_ttl_seconds;
           ntp_port = cfg.ntp_port;
           transcode = get_checked "g-transcode";
+          max_ffmpeg_per_stream = int_or "g-ffmpeg" cfg.max_ffmpeg_per_stream;
           gpu_device = (match get_input_value "g-gpu" with "" -> None | s -> Some s);
           streaming = {
             prefetch_count = int_or "s-prefetch" cfg.streaming.prefetch_count;

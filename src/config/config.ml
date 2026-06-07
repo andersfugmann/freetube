@@ -34,6 +34,7 @@ type t = {
   session_ttl_seconds : float;
   ntp_port : int;
   transcode : bool;
+  max_ffmpeg_per_stream : int;
   gpu_device : string option;
   streaming : streaming;
   network : network;
@@ -46,6 +47,7 @@ let default = {
   session_ttl_seconds = 1800.0;
   ntp_port = 7010;
   transcode = false;
+  max_ffmpeg_per_stream = 2;
   gpu_device = None;
   streaming = {
     prefetch_count = 3;
@@ -61,7 +63,6 @@ let default = {
     file_chunk_size = 65536;
     yt_dlp_force_ipv6 = true;
   };
- (* TODO This should be set as client capabilities *)
   video = {
     max_width = 3840;
     max_height = 2160;

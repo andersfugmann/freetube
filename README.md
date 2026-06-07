@@ -71,7 +71,8 @@ Configuration can be edited via the browser extension settings panel or the
 | `session_ttl_seconds` | float | `1800.0` | Idle session timeout before cleanup |
 | `ntp_port` | int | `7010` | NTP timing port for AirPlay |
 | `transcode` | bool | `false` | Master transcoding switch; when false, disables transcoding globally regardless of per-device settings |
-| `gpu_device` | string\|null | `null` | VAAPI render node for hardware transcoding (e.g. `/dev/dri/renderD128`). When null, defaults to `/dev/dri/renderD128` |
+| `max_ffmpeg_per_stream` | int | `2` | Maximum concurrent ffmpeg processes per stream |
+| `gpu_device` | string\|null | `null` | VAAPI render node for hardware transcoding (e.g. `/dev/dri/renderD128`). When null, ffmpeg auto-selects the first available device |
 
 ### Streaming
 
@@ -97,8 +98,8 @@ Configuration can be edited via the browser extension settings panel or the
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `video.max_width` | int | `3840` | Maximum video width to select |
-| `video.max_height` | int | `2160` | Maximum video height to select |
+| `video.max_width` | int | `3840` | Maximum video width to select (global fallback; can be overridden per-device) |
+| `video.max_height` | int | `2160` | Maximum video height to select (global fallback; can be overridden per-device) |
 
 ### Discovery
 
@@ -107,3 +108,14 @@ Configuration can be edited via the browser extension settings panel or the
 | `discovery.scan_timeout_seconds` | float | `5.0` | Device scan timeout |
 | `discovery.airplay_interval_seconds` | float | `60.0` | AirPlay mDNS browse interval |
 | `discovery.dlna_interval_seconds` | float | `60.0` | DLNA SSDP search interval |
+
+### Per-device configuration
+
+Per-device overrides are stored in `$XDG_CONFIG_HOME/freetube/devices/<slug>.json`.
+In addition to codec preferences, vendor pin, and stream format, the following
+resolution fields are supported:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_width` | int\|null | `null` | Maximum video width for this device. When null, uses global `video.max_width` |
+| `max_height` | int\|null | `null` | Maximum video height for this device. When null, uses global `video.max_height` |

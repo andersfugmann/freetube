@@ -98,7 +98,7 @@ let source_of stream =
 let all_video_codecs = Codec.Video.[ Av1; Hevc; Vp9; Avc ]
 let all_audio_codecs = Codec.Audio.[ Opus; Aac; Vorbis; Flac ]
 
-let init ~env ~sw ~video_codecs ~audio_codecs ~transcode youtube =
+let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode youtube =
   let client = Http_client.init ~sw ~env () in
   let clock = Eio.Stdenv.clock env in
   let is_live = youtube.Youtube.video_info.is_live in
@@ -112,6 +112,7 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~transcode youtube =
   in
   let selection =
     Selector.select ~video_codecs:select_video_codecs ~audio_codecs:select_audio_codecs
+      ~max_width ~max_height
       youtube.Youtube.video_info.streams
     |> Option.value_exn ~message:"no compatible stream"
   in

@@ -8,7 +8,7 @@ module Log = (val Log_src.src_log ~doc:"AirPlay HTTP endpoints" Stdlib.__MODULE_
 let respond_json ~status ~json = Json_io.respond_json ~status json
 let respond_string = Json_io.respond_string
 
-let handle_pair_start_json ~(app : _ App.t) ~cache parsed =
+let handle_pair_start_json ~(app : _ App.t) parsed =
   let env = app.env in
   let sw = app.sw in
   let@! request =
@@ -16,7 +16,7 @@ let handle_pair_start_json ~(app : _ App.t) ~cache parsed =
     (`Bad_request, "AirPlay pairing") in
   Log.info (fun m -> m "Pair start for device %s" request.device_id);
   let entry =
-    Discovery_airplay.list cache
+    Device_store.all app.device_store
     |> List.find ~f:(fun (e : Device.t) ->
          match e.client with
          | Airplay c -> String.equal c.pairing_id request.device_id
@@ -44,7 +44,7 @@ let handle_pair_start_json ~(app : _ App.t) ~cache parsed =
       respond_json ~status:`OK
         ~json:(Api.Airplay_pairing.pair_start_response_to_yojson { session_id })
 
-let handle_pair_finish_json ~clock:_ ~cache:_ parsed =
+let handle_pair_finish_json ~clock:_ parsed =
   let@! request =
     Json_io.parse_of_yojson Api.Airplay_pairing.pair_finish_request_of_yojson parsed,
     (`Bad_request, "AirPlay PIN verification") in
@@ -71,7 +71,6 @@ let handle_pair_finish_json ~clock:_ ~cache:_ parsed =
         ~json:(Api.Airplay_pairing.pair_finish_response_to_yojson response)
 
 let handle_pair ~(app : _ App.t) request =
-  let cache = app.airplay_cache in
   let@! payload = Json_io.read_body request, (`Bad_request, "AirPlay pairing") in
   let@! parsed = Json_io.parse_json payload, (`Bad_request, "AirPlay pairing") in
   let has_session_id =
@@ -80,5 +79,5 @@ let handle_pair ~(app : _ App.t) request =
     | _ -> false
   in
   match has_session_id with
-  | true -> handle_pair_finish_json ~clock:() ~cache parsed
-  | false -> handle_pair_start_json ~app ~cache parsed
+  | true -> handle_pair_finish_json ~clock:() parsed
+  | false -> handle_pair_start_json ~app parsed

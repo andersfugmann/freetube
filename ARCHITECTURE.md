@@ -193,7 +193,9 @@ Two JSON files under `$XDG_CONFIG_HOME/freetube/`:
   when discovery heuristics get it wrong), `stream_format` (`hls` or
   `dash` — controls which manifest format the sink receives; AirPlay
   devices default to `hls`, DLNA to `dash`), `is_static`, `address`,
-  `port`, `kind`, `control_url`, `transcode`. Loaded at startup; bad
+  `port`, `kind`, `control_url`, `transcode`, `max_width`, `max_height`
+  (per-device resolution cap; when absent, the global `video.max_width` /
+  `video.max_height` is used). Loaded at startup; bad
   files are logged and skipped. Written via
   `PUT /devices/<id>/config`. Merged into the matching discovery entry
   by `id` at scan time; static entries (`is_static = true`) are seeded
