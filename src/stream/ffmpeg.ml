@@ -3,7 +3,7 @@ open Util
 
 module Log = (val Log_src.src_log ~doc:"FFmpeg transcoding runner" Stdlib.__MODULE__)
 
-let vaapi_device = "/dev/dri/renderD128"
+let default_vaapi_device = "/dev/dri/renderD128"
 let max_segment_output = 64 * 1024 * 1024
 
 let read_all flow =
@@ -29,6 +29,9 @@ let video_encoder_name = function
 
 let video_args ~input_format params =
   let encoder = video_encoder_name params.video_codec in
+  let vaapi_device =
+    Option.value (Config.get ()).gpu_device ~default:default_vaapi_device
+  in
   let tonemap_filter = match params.dynamic_range with
     | Passthrough -> []
     | Tonemap_to_sdr ->

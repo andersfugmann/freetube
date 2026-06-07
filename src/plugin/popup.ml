@@ -399,6 +399,12 @@ let number_field ~id ~label ~value =
      <input type=\"number\" id=\"%s\" value=\"%s\" />"
     id label id value
 
+let text_field ~id ~label ~value =
+  Printf.sprintf
+    "<label class=\"lbl\" for=\"%s\">%s</label>\
+     <input type=\"text\" id=\"%s\" value=\"%s\" />"
+    id label id value
+
 let select_field ~id ~label ~options ~selected =
   let opts = String.concat ~sep:""
     (List.map options ~f:(fun (v, lbl) ->
@@ -484,6 +490,8 @@ let render_settings ~server ~back =
            ; "<div class=\"section\"><div class=\"section-title\">General</div>"
            ; checkbox_field ~id:"g-transcode" ~label:"Allow transcode"
                ~checked:cfg.transcode
+           ; text_field ~id:"g-gpu" ~label:"GPU device (blank = auto)"
+               ~value:(Option.value cfg.gpu_device ~default:"")
            ; "</div>"
            ; "<div class=\"row\" style=\"margin-top:10px;\">\
                 <button id=\"set-save\">Save</button>\
@@ -501,6 +509,7 @@ let render_settings ~server ~back =
           session_ttl_seconds = cfg.session_ttl_seconds;
           ntp_port = cfg.ntp_port;
           transcode = get_checked "g-transcode";
+          gpu_device = (match get_input_value "g-gpu" with "" -> None | s -> Some s);
           streaming = {
             prefetch_count = int_or "s-prefetch" cfg.streaming.prefetch_count;
             cache_capacity = int_or "s-cache" cfg.streaming.cache_capacity;

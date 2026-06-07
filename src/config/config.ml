@@ -34,6 +34,7 @@ type t = {
   session_ttl_seconds : float;
   ntp_port : int;
   transcode : bool;
+  gpu_device : string option;
   streaming : streaming;
   network : network;
   video : video;
@@ -45,6 +46,7 @@ let default = {
   session_ttl_seconds = 1800.0;
   ntp_port = 7010;
   transcode = false;
+  gpu_device = None;
   streaming = {
     prefetch_count = 3;
     cache_capacity = 6;

@@ -363,9 +363,12 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
       | Some e -> e.stream_format
       | None -> Api.Stream_format.Hls
   in
-  let transcode = match entry with
-    | Some e -> e.transcode
-    | None -> not (List.mem video_codecs Codec.Video.Av1 ~equal:Codec.Video.equal)
+  let transcode = match (Config.get ()).transcode with
+    | false -> false
+    | true ->
+      match entry with
+      | Some e -> e.transcode
+      | None -> not (List.mem video_codecs Codec.Video.Av1 ~equal:Codec.Video.equal)
   in
   let content_factory =
     match body.source with
