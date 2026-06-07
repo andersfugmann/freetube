@@ -30,6 +30,7 @@
   ppx_inline_test
   ppx_expect
   ppx_compare
+  ppx_jane
   logs
   fmt
   yojson
