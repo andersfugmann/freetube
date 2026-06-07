@@ -139,26 +139,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y opam ocaml pkg-config libgmp-dev libffi-dev libev-dev devscripts debhelper dh-sysuser
-
-      - name: Cache opam
-        uses: actions/cache@v4
-        with:
-          path: ~/.opam
-          key: opam-${{ runner.os }}-${{ hashFiles('freetube.opam') }}
-          restore-keys: opam-${{ runner.os }}-
-
-      - name: Setup opam
-        run: |
-          opam init --bare --no-setup --disable-sandboxing
-          opam switch create . ocaml-system --no-install || true
-          opam install . --deps-only --with-test --yes
-
-      - name: Build
-        run: opam exec -- make build
-
-      - name: Test
-        run: opam exec -- make test
+          sudo apt-get install -y opam pkg-config libgmp-dev libffi-dev libev-dev devscripts debhelper dh-sysuser
 
       - name: Build debian packages
         run: dpkg-buildpackage -us -uc -b
