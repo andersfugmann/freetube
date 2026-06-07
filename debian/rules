@@ -9,7 +9,7 @@ export OPAMYES = 1
 
 override_dh_auto_configure:
 	opam init --bare --no-setup --disable-sandboxing
-	opam switch create . ocaml-system --no-install
+	opam switch create . ocaml-base-compiler.5.3.0
 	opam install . --deps-only --with-test
 
 override_dh_auto_build:
