@@ -75,10 +75,10 @@ let close t =
 (* ── Request handling ──────────────────────────────────────────── *)
 
 let profile_of_vendor : Vendor.t -> Stream.Hls.profile = function
-  | Apple   -> { independent_segments = true;  playlist_type = true;  session_data = true;  start_offset = true }
-  | Samsung -> { independent_segments = false; playlist_type = false; session_data = false; start_offset = false }
-  | Lg      -> { independent_segments = true;  playlist_type = true;  session_data = false; start_offset = true }
-  | Generic -> { independent_segments = true;  playlist_type = true;  session_data = true;  start_offset = true }
+  | Apple   -> { independent_segments = true;  playlist_type = true;  session_data = true;  start_offset = true;  iframe_stream = true }
+  | Samsung -> { independent_segments = false; playlist_type = false; session_data = false; start_offset = false; iframe_stream = false }
+  | Lg      -> { independent_segments = true;  playlist_type = true;  session_data = false; start_offset = true;  iframe_stream = false }
+  | Generic -> { independent_segments = true;  playlist_type = true;  session_data = true;  start_offset = true;  iframe_stream = true }
 
 let mime_of ~rendition ~(container : Stream.Producer.Container.kind) =
   match container, rendition with
@@ -150,6 +150,28 @@ let serve t ~path =
          in
          let body = Stream.Storyboard.fetch sb ~id in
          Ok { content_type = "image/jpeg"; body })
+    | ["iframe"; "media.m3u8"] ->
+      (match Stream.Source.iframe_stream source with
+       | None -> Error Not_found
+       | Some ifs ->
+         let body = Stream.Hls.iframe_media ifs in
+         Ok { content_type = "application/vnd.apple.mpegurl"; body })
+    | ["iframe"; "init.mp4"] ->
+      (match Stream.Source.iframe_stream source with
+       | None -> Error Not_found
+       | Some ifs ->
+         let body = Stream.Iframe_stream.init_segment ifs in
+         Ok { content_type = "video/mp4"; body })
+    | ["iframe"; filename] ->
+      (match Stream.Source.iframe_stream source with
+       | None -> Error Not_found
+       | Some ifs ->
+         let id =
+           String.chop_suffix_exn filename ~suffix:".mp4"
+           |> Int.of_string
+         in
+         let body = Stream.Iframe_stream.frame ifs ~id in
+         Ok { content_type = "video/mp4"; body })
     | [r; "media.m3u8"] ->
       let* rendition = parse_rendition r in
       let body = Stream.Source.media source ~base_url ~rendition ~profile in

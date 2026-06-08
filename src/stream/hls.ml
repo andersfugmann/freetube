@@ -19,6 +19,7 @@ type profile = {
   playlist_type        : bool;
   session_data         : bool;
   start_offset         : bool;
+  iframe_stream        : bool;
 }
 
 let generic_profile = {
@@ -26,6 +27,7 @@ let generic_profile = {
   playlist_type        = true;
   session_data         = true;
   start_offset         = true;
+  iframe_stream        = true;
 }
 
 let hdcp_level dr =
@@ -137,7 +139,7 @@ let media ?(profile = generic_profile) ?(media_sequence = 0) ?program_date_time
     (header @ body_prefix @ pdt_line @ segment_lines ~is_live rendition ext segments @ ending)
   ^ "\n"
 
-let master ?(profile = generic_profile) ?storyboard ~title
+let master ?(profile = generic_profile) ?storyboard ?iframe_stream ~title
     ~(video : Stream.t) ~(audio : Stream.t)
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw () =
@@ -208,9 +210,20 @@ let master ?(profile = generic_profile) ?storyboard ~title
           tile_w tile_h
           (Storyboard.columns sb) (Storyboard.rows sb) ]
   in
+  let iframe_stream_inf =
+    match profile.iframe_stream, iframe_stream with
+    | true, Some ifs ->
+      let iw = Iframe_stream.thumb_width ifs in
+      let ih = Iframe_stream.thumb_height ifs in
+      let bw = (iw * ih * 8) / 2 in
+      [ ""; Stdlib.Printf.sprintf
+          "#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"avc1.42c00d\",URI=\"iframe/media.m3u8\",VIDEO-RANGE=%s"
+          bw iw ih (dynamic_range_string Codec.Dynamic_range.Sdr) ]
+    | _ -> []
+  in
   String.concat ~sep:"\n"
     (header @ independent @ session_data @ [ ""; media_audio; ""; stream_inf;
-                                             "video/media.m3u8" ] @ image_stream)
+                                             "video/media.m3u8" ] @ image_stream @ iframe_stream_inf)
   ^ "\n"
 
 let storyboard_media sb =
@@ -232,6 +245,27 @@ let storyboard_media sb =
       let dur = Storyboard.fragment_duration sb ~id:i in
       [ Stdlib.Printf.sprintf "#EXTINF:%s," (extinf_duration dur)
       ; Stdlib.Printf.sprintf "%d.jpg" i ])
+    |> List.concat
+  in
+  String.concat ~sep:"\n" (header @ segments @ [ "#EXT-X-ENDLIST" ]) ^ "\n"
+
+let iframe_media iframe =
+  let count = Iframe_stream.frame_count iframe in
+  let dur = Iframe_stream.frame_duration_secs iframe in
+  let target_duration = Stdlib.int_of_float (Stdlib.ceil dur) in
+  let header =
+    [ "#EXTM3U"
+    ; "#EXT-X-VERSION:7"
+    ; Stdlib.Printf.sprintf "#EXT-X-TARGETDURATION:%d" target_duration
+    ; "#EXT-X-PLAYLIST-TYPE:VOD"
+    ; "#EXT-X-I-FRAMES-ONLY"
+    ; "#EXT-X-MAP:URI=\"init.mp4\""
+    ]
+  in
+  let segments =
+    List.init count ~f:(fun i ->
+      [ Stdlib.Printf.sprintf "#EXTINF:%s," (extinf_duration dur)
+      ; Stdlib.Printf.sprintf "%d.mp4" i ])
     |> List.concat
   in
   String.concat ~sep:"\n" (header @ segments @ [ "#EXT-X-ENDLIST" ]) ^ "\n"
@@ -311,6 +345,7 @@ let%expect_test "master playlist gating: Samsung-style profile drops advisory ta
     playlist_type        = false;
     session_data         = false;
     start_offset         = false;
+    iframe_stream        = false;
   } in
   let playlist =
     master ~profile:samsung ~title:"Test Title"
@@ -329,6 +364,7 @@ let%expect_test "media playlist gating: Samsung drops PLAYLIST-TYPE" =
     playlist_type        = false;
     session_data         = false;
     start_offset         = false;
+    iframe_stream        = false;
   } in
   let playlist =
     media ~profile:samsung
@@ -422,6 +458,7 @@ let%expect_test "golden master playlist: Samsung profile" =
   let samsung = {
     independent_segments = false; playlist_type = false;
     session_data = false; start_offset = false;
+    iframe_stream = false;
   } in
   let playlist =
     master ~profile:samsung ~title:"abc"
@@ -444,6 +481,7 @@ let%expect_test "golden master playlist: Lg profile drops SESSION-DATA only" =
   let lg = {
     independent_segments = true; playlist_type = true;
     session_data = false; start_offset = true;
+    iframe_stream = false;
   } in
   let playlist =
     master ~profile:lg ~title:"abc"
@@ -489,6 +527,7 @@ let%expect_test "golden media playlist: Samsung profile drops PLAYLIST-TYPE" =
   let samsung = {
     independent_segments = false; playlist_type = false;
     session_data = false; start_offset = false;
+    iframe_stream = false;
   } in
   let playlist =
     media ~profile:samsung ~base_url:"/sessions/abc" ~rendition:"video"
@@ -580,3 +619,75 @@ let%expect_test "segment_parity_violations: count mismatch reported" =
   in
   List.iter violations ~f:Stdlib.print_endline;
   [%expect {| segment count mismatch: video=1 audio=2 |}]
+
+let%expect_test "iframe_media: golden I-frame-only playlist" =
+  let ifs : Iframe_stream.t = {
+    init_segment = "fake_init";
+    frames = Array.init 3 ~f:(fun _ -> "fake_frame");
+    thumb_width = 159;
+    thumb_height = 90;
+    frame_duration_secs = 2.0;
+  } in
+  let playlist = iframe_media ifs in
+  Stdlib.print_string playlist;
+  [%expect {|
+    #EXTM3U
+    #EXT-X-VERSION:7
+    #EXT-X-TARGETDURATION:2
+    #EXT-X-PLAYLIST-TYPE:VOD
+    #EXT-X-I-FRAMES-ONLY
+    #EXT-X-MAP:URI="init.mp4"
+    #EXTINF:2.000,
+    0.mp4
+    #EXTINF:2.000,
+    1.mp4
+    #EXTINF:2.000,
+    2.mp4
+    #EXT-X-ENDLIST
+    |}]
+
+let%expect_test "master playlist: I-FRAME-STREAM-INF emitted for generic profile" =
+  let ifs : Iframe_stream.t = {
+    init_segment = "fake_init";
+    frames = Array.init 5 ~f:(fun _ -> "fake_frame");
+    thumb_width = 159;
+    thumb_height = 90;
+    frame_duration_secs = 2.0;
+  } in
+  let playlist =
+    master ~profile:generic_profile ~iframe_stream:ifs ~title:"Test"
+      ~video:sample_video ~audio:sample_audio
+      ~video_rfc6381:"avc1.640028" ~audio_rfc6381:"mp4a.40.2"
+      ~average_bandwidth_bps:4_200_000 ()
+  in
+  Stdlib.Printf.printf "%b\n"
+    (String.is_substring playlist ~substring:"#EXT-X-I-FRAME-STREAM-INF:");
+  Stdlib.Printf.printf "%b\n"
+    (String.is_substring playlist ~substring:"URI=\"iframe/media.m3u8\"");
+  [%expect {|
+    true
+    true
+    |}]
+
+let%expect_test "master playlist: I-FRAME-STREAM-INF absent for Samsung profile" =
+  let samsung = {
+    independent_segments = false; playlist_type = false;
+    session_data = false; start_offset = false;
+    iframe_stream = false;
+  } in
+  let ifs : Iframe_stream.t = {
+    init_segment = "fake_init";
+    frames = Array.init 5 ~f:(fun _ -> "fake_frame");
+    thumb_width = 159;
+    thumb_height = 90;
+    frame_duration_secs = 2.0;
+  } in
+  let playlist =
+    master ~profile:samsung ~iframe_stream:ifs ~title:"Test"
+      ~video:sample_video ~audio:sample_audio
+      ~video_rfc6381:"avc1.640028" ~audio_rfc6381:"mp4a.40.2"
+      ~average_bandwidth_bps:4_200_000 ()
+  in
+  Stdlib.Printf.printf "%b\n"
+    (String.is_substring playlist ~substring:"#EXT-X-I-FRAME-STREAM-INF:");
+  [%expect {| false |}]

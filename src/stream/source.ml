@@ -19,6 +19,8 @@ type t = {
   is_live : bool;
   start_walltime_ms : int;
   storyboard : Storyboard.t option;
+  mutable iframe_stream : Iframe_stream.t option;
+  env : Eio_unix.Stdenv.base;
 }
 
 let ( |+> ) (type k) (module M : Producer.S with type kind = k) (module Y : Producer.Make) =
@@ -211,7 +213,7 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode 
         title = youtube.Youtube.video_info.title;
         duration_seconds = youtube.Youtube.video_info.duration_secs;
         is_live = meta.is_live; start_walltime_ms = meta.start_walltime_ms;
-        storyboard }
+        storyboard; iframe_stream = None; env }
 
 let segments_array t rendition =
   let segs =
@@ -241,7 +243,7 @@ let master t ~session_id:_ ~base_url:_ ~profile =
   in
   let video_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.video) in
   let audio_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.audio) in
-  Hls.master ~profile ?storyboard:t.storyboard ~title:t.title
+  Hls.master ~profile ?storyboard:t.storyboard ?iframe_stream:t.iframe_stream ~title:t.title
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw ()
@@ -301,6 +303,17 @@ let segment t ~rendition ~id =
   | `Audio -> Producer.fetch_segment t.audio ~id
 
 let storyboard t = t.storyboard
+
+let iframe_stream t =
+  match t.iframe_stream with
+  | Some ifs -> Some ifs
+  | None ->
+    match t.storyboard with
+    | None -> None
+    | Some sb ->
+      let ifs = Iframe_stream.create ~env:t.env ~storyboard:sb in
+      t.iframe_stream <- Some ifs;
+      Some ifs
 
 let close t =
   (try Producer.close t.video with _ -> ());
