@@ -173,6 +173,9 @@ let select ~video_codecs ~audio_codecs ~max_width ~max_height streams =
     Some (Muxed m)
   | _ -> None
 
+let select_storyboard streams =
+  Youtube.Video_info.Storyboard.of_streams streams
+
 (* Tests *)
 
 let stream ?(format_id="") ?(url="") ?(ext=Youtube.Video_info.Container.Mp4) ?vcodec ?acodec

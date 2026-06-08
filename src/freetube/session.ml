@@ -156,21 +156,11 @@ let serve t ~path =
        | Some ifs ->
          let body = Stream.Hls.iframe_media ifs in
          Ok { content_type = "application/vnd.apple.mpegurl"; body })
-    | ["iframe"; "init.mp4"] ->
+    | ["iframe"; "stream.mp4"] ->
       (match Stream.Source.iframe_stream source with
        | None -> Error Not_found
        | Some ifs ->
-         let body = Stream.Iframe_stream.init_segment ifs in
-         Ok { content_type = "video/mp4"; body })
-    | ["iframe"; filename] ->
-      (match Stream.Source.iframe_stream source with
-       | None -> Error Not_found
-       | Some ifs ->
-         let id =
-           String.chop_suffix_exn filename ~suffix:".mp4"
-           |> Int.of_string
-         in
-         let body = Stream.Iframe_stream.frame ifs ~id in
+         let body = Stream.Iframe_stream.data ifs in
          Ok { content_type = "video/mp4"; body })
     | [r; "media.m3u8"] ->
       let* rendition = parse_rendition r in

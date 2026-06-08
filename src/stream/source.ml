@@ -205,7 +205,7 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode 
         match is_live with
         | true -> None
         | false ->
-          Youtube.Video_info.Storyboard.of_streams youtube.Youtube.video_info.streams
+          Selector.select_storyboard youtube.Youtube.video_info.streams
           |> Option.map ~f:(fun sb -> Storyboard.init ~sw ~client ~storyboard:sb)
       in
       { client; video = video_p; audio = audio_p;
@@ -231,6 +231,17 @@ let container t ~rendition =
   in
   shape
 
+let iframe_stream t =
+  match t.iframe_stream with
+  | Some ifs -> Some ifs
+  | None ->
+    match t.storyboard with
+    | None -> None
+    | Some sb ->
+      let ifs = Iframe_stream.create ~env:t.env ~storyboard:sb in
+      t.iframe_stream <- Some ifs;
+      Some ifs
+
 let master t ~session_id:_ ~base_url:_ ~profile =
   let avg_bw =
     match t.is_live with
@@ -243,7 +254,7 @@ let master t ~session_id:_ ~base_url:_ ~profile =
   in
   let video_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.video) in
   let audio_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.audio) in
-  Hls.master ~profile ?storyboard:t.storyboard ?iframe_stream:t.iframe_stream ~title:t.title
+  Hls.master ~profile ?storyboard:t.storyboard ?iframe_stream:(iframe_stream t) ~title:t.title
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw ()
@@ -303,17 +314,6 @@ let segment t ~rendition ~id =
   | `Audio -> Producer.fetch_segment t.audio ~id
 
 let storyboard t = t.storyboard
-
-let iframe_stream t =
-  match t.iframe_stream with
-  | Some ifs -> Some ifs
-  | None ->
-    match t.storyboard with
-    | None -> None
-    | Some sb ->
-      let ifs = Iframe_stream.create ~env:t.env ~storyboard:sb in
-      t.iframe_stream <- Some ifs;
-      Some ifs
 
 let close t =
   (try Producer.close t.video with _ -> ());

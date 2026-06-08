@@ -253,19 +253,22 @@ let iframe_media iframe =
   let count = Iframe_stream.frame_count iframe in
   let dur = Iframe_stream.frame_duration_secs iframe in
   let target_duration = Stdlib.int_of_float (Stdlib.ceil dur) in
+  let init_end = iframe.Iframe_stream.init_end in
   let header =
     [ "#EXTM3U"
     ; "#EXT-X-VERSION:7"
     ; Stdlib.Printf.sprintf "#EXT-X-TARGETDURATION:%d" target_duration
     ; "#EXT-X-PLAYLIST-TYPE:VOD"
     ; "#EXT-X-I-FRAMES-ONLY"
-    ; "#EXT-X-MAP:URI=\"init.mp4\""
+    ; Stdlib.Printf.sprintf "#EXT-X-MAP:URI=\"stream.mp4\",BYTERANGE=\"%d@0\"" init_end
     ]
   in
   let segments =
     List.init count ~f:(fun i ->
+      let (offset, len) = iframe.frame_ranges.(i) in
       [ Stdlib.Printf.sprintf "#EXTINF:%s," (extinf_duration dur)
-      ; Stdlib.Printf.sprintf "%d.mp4" i ])
+      ; Stdlib.Printf.sprintf "#EXT-X-BYTERANGE:%d@%d" len offset
+      ; "stream.mp4" ])
     |> List.concat
   in
   String.concat ~sep:"\n" (header @ segments @ [ "#EXT-X-ENDLIST" ]) ^ "\n"
@@ -622,8 +625,9 @@ let%expect_test "segment_parity_violations: count mismatch reported" =
 
 let%expect_test "iframe_media: golden I-frame-only playlist" =
   let ifs : Iframe_stream.t = {
-    init_segment = "fake_init";
-    frames = Array.init 3 ~f:(fun _ -> "fake_frame");
+    data = String.make 3774 '\x00';
+    init_end = 774;
+    frame_ranges = [| (774, 1000); (1774, 1000); (2774, 1000) |];
     thumb_width = 159;
     thumb_height = 90;
     frame_duration_secs = 2.0;
@@ -636,20 +640,24 @@ let%expect_test "iframe_media: golden I-frame-only playlist" =
     #EXT-X-TARGETDURATION:2
     #EXT-X-PLAYLIST-TYPE:VOD
     #EXT-X-I-FRAMES-ONLY
-    #EXT-X-MAP:URI="init.mp4"
+    #EXT-X-MAP:URI="stream.mp4",BYTERANGE="774@0"
     #EXTINF:2.000,
-    0.mp4
+    #EXT-X-BYTERANGE:1000@774
+    stream.mp4
     #EXTINF:2.000,
-    1.mp4
+    #EXT-X-BYTERANGE:1000@1774
+    stream.mp4
     #EXTINF:2.000,
-    2.mp4
+    #EXT-X-BYTERANGE:1000@2774
+    stream.mp4
     #EXT-X-ENDLIST
     |}]
 
 let%expect_test "master playlist: I-FRAME-STREAM-INF emitted for generic profile" =
   let ifs : Iframe_stream.t = {
-    init_segment = "fake_init";
-    frames = Array.init 5 ~f:(fun _ -> "fake_frame");
+    data = String.make 5774 '\x00';
+    init_end = 774;
+    frame_ranges = Array.init 5 ~f:(fun i -> (774 + i * 1000, 1000));
     thumb_width = 159;
     thumb_height = 90;
     frame_duration_secs = 2.0;
@@ -676,8 +684,9 @@ let%expect_test "master playlist: I-FRAME-STREAM-INF absent for Samsung profile"
     iframe_stream = false;
   } in
   let ifs : Iframe_stream.t = {
-    init_segment = "fake_init";
-    frames = Array.init 5 ~f:(fun _ -> "fake_frame");
+    data = String.make 5774 '\x00';
+    init_end = 774;
+    frame_ranges = Array.init 5 ~f:(fun i -> (774 + i * 1000, 1000));
     thumb_width = 159;
     thumb_height = 90;
     frame_duration_secs = 2.0;
