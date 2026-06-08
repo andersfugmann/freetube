@@ -88,7 +88,7 @@ let mime_of ~rendition ~(container : Stream.Producer.Container.kind) =
   | Webm, `Video  -> "video/webm"
   | Webm, `Audio  -> "audio/webm"
 
-type response = { content_type: string; body: string }
+type response = { content_type: string; body: string; accept_ranges: bool }
 
 type request_error =
   | Not_found
@@ -130,16 +130,16 @@ let serve t ~path =
     | ["master.m3u8"] ->
       let body = Stream.Source.master source
           ~session_id:t.id ~base_url ~profile in
-      Ok { content_type = "application/vnd.apple.mpegurl"; body }
+      Ok { content_type = "application/vnd.apple.mpegurl"; body; accept_ranges = false }
     | ["dash.mpd"] ->
       let body = Stream.Source.dash_mpd source in
-      Ok { content_type = Stream.Dash.content_type; body }
+      Ok { content_type = Stream.Dash.content_type; body; accept_ranges = false }
     | ["storyboard"; "media.m3u8"] ->
       (match Stream.Source.storyboard source with
        | None -> Error Not_found
        | Some sb ->
          let body = Stream.Hls.storyboard_media sb in
-         Ok { content_type = "application/vnd.apple.mpegurl"; body })
+         Ok { content_type = "application/vnd.apple.mpegurl"; body; accept_ranges = false })
     | ["storyboard"; filename] ->
       (match Stream.Source.storyboard source with
        | None -> Error Not_found
@@ -149,34 +149,34 @@ let serve t ~path =
            |> Int.of_string
          in
          let body = Stream.Storyboard.fetch sb ~id in
-         Ok { content_type = "image/jpeg"; body })
+         Ok { content_type = "image/jpeg"; body; accept_ranges = false })
     | ["iframe"; "media.m3u8"] ->
       (match Stream.Source.iframe_stream source with
        | None -> Error Not_found
        | Some ifs ->
          let body = Stream.Hls.iframe_media ifs in
-         Ok { content_type = "application/vnd.apple.mpegurl"; body })
+         Ok { content_type = "application/vnd.apple.mpegurl"; body; accept_ranges = false })
     | ["iframe"; "stream.mp4"] ->
       (match Stream.Source.iframe_stream source with
        | None -> Error Not_found
        | Some ifs ->
          let body = Stream.Iframe_stream.data ifs in
-         Ok { content_type = "video/mp4"; body })
+         Ok { content_type = "video/mp4"; body; accept_ranges = true })
     | [r; "media.m3u8"] ->
       let* rendition = parse_rendition r in
       let body = Stream.Source.media source ~base_url ~rendition ~profile in
-      Ok { content_type = "application/vnd.apple.mpegurl"; body }
+      Ok { content_type = "application/vnd.apple.mpegurl"; body; accept_ranges = false }
     | [r; init] when String.is_prefix init ~prefix:"init." ->
       let* rendition = parse_rendition r in
       let container = Stream.Source.container source ~rendition in
       let body = Stream.Source.init_segment source ~rendition in
-      Ok { content_type = mime_of ~rendition ~container; body }
+      Ok { content_type = mime_of ~rendition ~container; body; accept_ranges = false }
     | [r; "seg"; seg_file] ->
       let* rendition = parse_rendition r in
       let* id = parse_seg seg_file in
       let container = Stream.Source.container source ~rendition in
       let segment = Stream.Source.segment source ~rendition ~id in
-      Ok { content_type = mime_of ~rendition ~container; body = segment.data }
+      Ok { content_type = mime_of ~rendition ~container; body = segment.data; accept_ranges = false }
     | _ -> Error Not_found
 
 let recreate_content t =

@@ -201,7 +201,6 @@ let master ?(profile = generic_profile) ?storyboard ?iframe_stream ~title
   in
   let image_stream =
     match storyboard with
-    | None -> []
     | Some sb ->
       let tile_w = Storyboard.columns sb * Storyboard.thumb_width sb in
       let tile_h = Storyboard.rows sb * Storyboard.thumb_height sb in
@@ -209,6 +208,7 @@ let master ?(profile = generic_profile) ?storyboard ?iframe_stream ~title
           "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=5000,RESOLUTION=%dx%d,CODECS=\"jpeg\",URI=\"storyboard/media.m3u8\",TILES=\"%dx%d\""
           tile_w tile_h
           (Storyboard.columns sb) (Storyboard.rows sb) ]
+    | None -> []
   in
   let iframe_stream_inf =
     match profile.iframe_stream, iframe_stream with

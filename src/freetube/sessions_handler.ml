@@ -222,17 +222,29 @@ let respond_playlist ~body =
   in
   Piaf.Response.of_string ~headers ~body `OK
 
-let respond_media ~content_type ~body =
-  let headers =
-    Piaf.Headers.of_list
-      [ "content-type", content_type;
-        "cache-control", "no-store";
-        "content-length", Int.to_string (String.length body);
-        "transferMode.dlna.org", "Streaming" ]
+let respond_media ~content_type ~body ~accept_ranges (request : Piaf.Request.t) =
+  let total = String.length body in
+  let range_header = Piaf.Headers.get (Piaf.Request.headers request) "range" in
+  let parsed_range =
+    match accept_ranges, range_header with
+    | true, Some header -> Static.parse_range header ~total
+    | _ -> None
   in
-  Piaf.Response.of_string ~headers ~body `OK
+  match accept_ranges, range_header, parsed_range with
+  | true, Some _, None when total > 0 ->
+    Static.respond_range_not_satisfiable ~total
+  | _ ->
+    let offset, length, status =
+      match parsed_range with
+      | None -> 0, total, `OK
+      | Some r -> r.start, r.length, `Partial_content
+    in
+    let range = parsed_range in
+    let headers = Static.response_headers ~content_type ~length ~range ~total in
+    let body = String.sub body ~pos:offset ~len:length in
+    Piaf.Response.of_string ~headers ~body status
 
-let handle_session_request ~(app : _ App.t) ~id ~sub_path =
+let handle_session_request ~(app : _ App.t) ~id ~sub_path (request : Piaf.Request.t) =
   match Sessions.find app.sessions ~id with
   | None -> respond_string ~status:`Not_found (Printf.sprintf "Session %s not found" id)
   | Some session ->
@@ -249,7 +261,8 @@ let handle_session_request ~(app : _ App.t) ~id ~sub_path =
         |> List.filter ~f:(fun s -> not (String.is_empty s))
       in
       match Session.handle_request session ~path with
-      | Ok { content_type; body } -> respond_media ~content_type ~body
+      | Ok { content_type; body; accept_ranges } ->
+        respond_media ~content_type ~body ~accept_ranges request
       | Error Not_found -> respond_string ~status:`Not_found "not found"
       | Error No_stream -> respond_string ~status:`Conflict "no stream source"
       | Error (Unavailable msg) -> respond_string ~status:`Bad_gateway msg

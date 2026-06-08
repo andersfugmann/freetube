@@ -34,11 +34,11 @@ let routers ~app ~static_root ~sw ~client_address =
     (s "devices"  /? nil) @--> (fun (_ : Piaf.Request.t) -> Devices_handler.handle_list ~app);
     (s "devices" / str / s "config" /? nil) @--> (fun id _ ->
       Devices_handler.handle_get_config ~app ~id);
-    (s "sessions" / str /? wildcard) @--> (fun id sub_path _ ->
-      Sessions_handler.handle_session_request ~app ~id ~sub_path);
+    (s "sessions" / str /? wildcard) @--> (fun id sub_path request ->
+      Sessions_handler.handle_session_request ~app ~id ~sub_path request);
     (* Legacy path: /session/<id>/... *)
-    (s "session" / str /? wildcard) @--> (fun id sub_path _ ->
-      Sessions_handler.handle_session_request ~app ~id ~sub_path);
+    (s "session" / str /? wildcard) @--> (fun id sub_path request ->
+      Sessions_handler.handle_session_request ~app ~id ~sub_path request);
     (s "static" /? wildcard) @--> (fun _ request ->
       Static.serve ~sw ~root:static_root request);
   ]
@@ -80,10 +80,10 @@ let routers ~app ~static_root ~sw ~client_address =
       (s "devices"  /? nil) @--> (fun _ -> Devices_handler.handle_list ~app);
       (s "devices" / str / s "config" /? nil) @--> (fun id _ ->
         Devices_handler.handle_get_config ~app ~id);
-      (s "sessions" / str /? wildcard) @--> (fun id sub_path _ ->
-        Sessions_handler.handle_session_request ~app ~id ~sub_path);
-      (s "session" / str /? wildcard) @--> (fun id sub_path _ ->
-        Sessions_handler.handle_session_request ~app ~id ~sub_path);
+      (s "sessions" / str /? wildcard) @--> (fun id sub_path request ->
+        Sessions_handler.handle_session_request ~app ~id ~sub_path request);
+      (s "session" / str /? wildcard) @--> (fun id sub_path request ->
+        Sessions_handler.handle_session_request ~app ~id ~sub_path request);
     ])
   in
   `POST post, `GET get, `PUT put, `DELETE delete, `HEAD head
