@@ -49,20 +49,31 @@ let create ~env ~storyboard =
   let thumb_w = Storyboard.thumb_width storyboard in
   let thumb_h = Storyboard.thumb_height storyboard in
   let count = Storyboard.count storyboard in
-  let thumbs_per_sprite = columns * rows in
-  let frag_duration = Storyboard.fragment_duration storyboard ~id:0 in
-  let interval = frag_duration /. Float.of_int thumbs_per_sprite in
-  (* Collect all sprite sheet JPEGs in order *)
+  let expected_w = thumb_w * columns in
+  let expected_h = thumb_h * rows in
+  let interval = 10.0 in
+  let offset = interval /. 2.0 in
+  (* Collect full-grid sprite sheets, skip partial last sprite *)
   let sprite_buf = Buffer.create (count * 50_000) in
+  let included = ref 0 in
   for frag_idx = 0 to count - 1 do
     let sprite_data = Storyboard.fetch storyboard ~id:frag_idx in
-    Buffer.add_string sprite_buf sprite_data
+    match Jpeg_size.dimensions sprite_data with
+    | Some (w, h) when w = expected_w && h = expected_h ->
+      Buffer.add_string sprite_buf sprite_data;
+      Int.incr included
+    | Some (w, h) ->
+      Log.info (fun m -> m "iframe_stream: skipping sprite %d (size %dx%d, expected %dx%d)"
+                   frag_idx w h expected_w expected_h)
+    | None ->
+      Log.warn (fun m -> m "iframe_stream: skipping sprite %d (cannot read dimensions)" frag_idx)
   done;
+  let n_sprites = !included in
   let input_data = Buffer.contents sprite_buf in
-  Log.info (fun m -> m "iframe_stream: encoding %d sprites (%dx%d grid, interval=%.2fs)"
-               count columns rows interval);
-  let vf = Printf.sprintf "untile=%dx%d,settb=AVTB,setpts=N*%f/TB"
-      columns rows interval in
+  Log.info (fun m -> m "iframe_stream: encoding %d/%d sprites (%dx%d grid, interval=%.1fs offset=%.1fs)"
+               n_sprites count columns rows interval offset);
+  let vf = Printf.sprintf "untile=%dx%d,settb=AVTB,setpts=(N*%f+%f)/TB"
+      columns rows interval offset in
   let encode_args =
     [ "-f"; "image2pipe"; "-framerate"; "1"; "-i"; "pipe:0";
       "-vf"; vf;

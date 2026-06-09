@@ -154,6 +154,10 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
           ~output_timescale:s.output_timescale upstream_seg.data
       in
       let segment_data = Bmff.shift_base_media_decode_times segment_data ~offset in
+      Log.info (fun m ->
+        let bdt_secs = Int64.to_float offset /. Float.of_int s.output_timescale in
+        m "transcode %s seg=%d baseMediaDecodeTime=%Ld (%.3fs) timescale=%d"
+          kind id offset bdt_secs s.output_timescale);
       { Producer.Segment.
         start_usec = upstream_seg.start_usec;
         length_usec = upstream_seg.length_usec;
