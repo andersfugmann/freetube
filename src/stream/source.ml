@@ -18,9 +18,7 @@ type t = {
   duration_seconds : float;
   is_live : bool;
   start_walltime_ms : int;
-  storyboard : Storyboard.t option;
-  mutable iframe_stream : Iframe_stream.t option;
-  env : Eio_unix.Stdenv.base;
+  storyboard : Storyboard.t Eio.Lazy.t option;
 }
 
 let ( |+> ) (type k) (module M : Producer.S with type kind = k) (module Y : Producer.Make) =
@@ -206,14 +204,14 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode 
         | true -> None
         | false ->
           Selector.select_storyboard youtube.Youtube.video_info.streams
-          |> Option.map ~f:(fun sb -> Storyboard.init ~sw ~client ~storyboard:sb)
+          |> Option.map ~f:(fun sb -> Storyboard.init ~env ~sw ~client ~storyboard:sb)
       in
       { client; video = video_p; audio = audio_p;
         video_stream = video; audio_stream = audio;
         title = youtube.Youtube.video_info.title;
         duration_seconds = youtube.Youtube.video_info.duration_secs;
         is_live = meta.is_live; start_walltime_ms = meta.start_walltime_ms;
-        storyboard; iframe_stream = None; env }
+        storyboard }
 
 let segments_array t rendition =
   let segs =
@@ -232,15 +230,7 @@ let container t ~rendition =
   shape
 
 let iframe_stream t =
-  match t.iframe_stream with
-  | Some ifs -> Some ifs
-  | None ->
-    match t.storyboard with
-    | None -> None
-    | Some sb ->
-      let ifs = Iframe_stream.create ~env:t.env ~storyboard:sb in
-      t.iframe_stream <- Some ifs;
-      Some ifs
+  Option.map t.storyboard ~f:Eio.Lazy.force
 
 let master t ~session_id:_ ~base_url:_ ~profile =
   let avg_bw =

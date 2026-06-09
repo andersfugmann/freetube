@@ -202,8 +202,8 @@ let master ?(profile = generic_profile) ?iframe_stream ~title
   let iframe_stream_inf =
     match profile.iframe_stream, iframe_stream with
     | true, Some ifs ->
-      let iw = Iframe_stream.thumb_width ifs in
-      let ih = Iframe_stream.thumb_height ifs in
+      let iw = Storyboard.thumb_width ifs in
+      let ih = Storyboard.thumb_height ifs in
       let bw = (iw * ih * 8) / 2 in
       [ ""; Stdlib.Printf.sprintf
           "#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"avc1.42c00d\",URI=\"iframe/media.m3u8\",VIDEO-RANGE=%s"
@@ -216,10 +216,10 @@ let master ?(profile = generic_profile) ?iframe_stream ~title
   ^ "\n"
 
 let iframe_media iframe =
-  let count = Iframe_stream.frame_count iframe in
-  let dur = Iframe_stream.frame_duration_secs iframe in
+  let count = Storyboard.frame_count iframe in
+  let dur = Storyboard.frame_duration_secs iframe in
   let target_duration = Stdlib.int_of_float (Stdlib.ceil dur) in
-  let init_end = iframe.Iframe_stream.init_end in
+  let init_end = iframe.Storyboard.init_end in
   let header =
     [ "#EXTM3U"
     ; "#EXT-X-VERSION:7"
@@ -590,7 +590,7 @@ let%expect_test "segment_parity_violations: count mismatch reported" =
   [%expect {| segment count mismatch: video=1 audio=2 |}]
 
 let%expect_test "iframe_media: golden I-frame-only playlist" =
-  let ifs : Iframe_stream.t = {
+  let ifs : Storyboard.t = {
     data = String.make 3774 '\x00';
     init_end = 774;
     frame_ranges = [| (774, 1000); (1774, 1000); (2774, 1000) |];
@@ -620,7 +620,7 @@ let%expect_test "iframe_media: golden I-frame-only playlist" =
     |}]
 
 let%expect_test "master playlist: I-FRAME-STREAM-INF emitted for generic profile" =
-  let ifs : Iframe_stream.t = {
+  let ifs : Storyboard.t = {
     data = String.make 5774 '\x00';
     init_end = 774;
     frame_ranges = Array.init 5 ~f:(fun i -> (774 + i * 1000, 1000));
@@ -649,7 +649,7 @@ let%expect_test "master playlist: I-FRAME-STREAM-INF absent for Samsung profile"
     session_data = false; start_offset = false;
     iframe_stream = false;
   } in
-  let ifs : Iframe_stream.t = {
+  let ifs : Storyboard.t = {
     data = String.make 5774 '\x00';
     init_end = 774;
     frame_ranges = Array.init 5 ~f:(fun i -> (774 + i * 1000, 1000));

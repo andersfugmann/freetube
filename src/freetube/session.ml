@@ -144,7 +144,7 @@ let serve t ~path =
       (match Stream.Source.iframe_stream source with
        | None -> Error Not_found
        | Some ifs ->
-         let body = Stream.Iframe_stream.data ifs in
+         let body = Stream.Storyboard.data ifs in
          Ok { content_type = "video/mp4"; body; accept_ranges = true })
     | [r; "media.m3u8"] ->
       let* rendition = parse_rendition r in
