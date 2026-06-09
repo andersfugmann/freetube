@@ -127,46 +127,10 @@ let audio_adaptation_set ~is_live ~timescale ~container
         ]
     ]
 
-let storyboard_adaptation_set sb =
-  let columns = Storyboard.columns sb in
-  let rows = Storyboard.rows sb in
-  let tile_w = columns * Storyboard.thumb_width sb in
-  let tile_h = rows * Storyboard.thumb_height sb in
-  let count = Storyboard.count sb in
-  let segment_urls =
-    List.init count ~f:(fun i ->
-      tag "SegmentURL" [ attr "media" (Printf.sprintf "storyboard/%d.jpg" i) ] [])
-  in
-  let total_dur =
-    List.init count ~f:(fun i -> Storyboard.fragment_duration sb ~id:i)
-    |> List.fold ~init:0. ~f:Float.( + )
-  in
-  let bandwidth =
-    match Float.(total_dur > 0.) with
-    | true -> 5000
-    | false -> 0
-  in
-  tag "AdaptationSet"
-    [ attr "mimeType" "image/jpeg"
-    ; attr "contentType" "image"
-    ]
-    [ tag "EssentialProperty"
-        [ attr "schemeIdUri" "http://dashif.org/guidelines/thumbnail_tile"
-        ; attr "value" (Printf.sprintf "%dx%d" columns rows)
-        ] []
-    ; tag "Representation"
-        [ attr "id" "thumbnails"
-        ; attr "bandwidth" (Int.to_string bandwidth)
-        ; attr "width" (Int.to_string tile_w)
-        ; attr "height" (Int.to_string tile_h)
-        ]
-        [ tag "SegmentList" [] segment_urls ]
-    ]
-
 let mpd ~title ~is_live ~start_walltime_ms ~container
       ~(video : Stream.t) ~(audio : Stream.t)
       ~video_rfc6381 ~audio_rfc6381
-      ~video_segments ~audio_segments ?storyboard () =
+      ~video_segments ~audio_segments () =
   let timescale = 1000 in
   let duration_secs =
     Float.max (total_duration_secs video_segments) (total_duration_secs audio_segments)
@@ -203,9 +167,7 @@ let mpd ~title ~is_live ~start_walltime_ms ~container
     let adaptation_sets =
       [ video_adaptation_set ~is_live ~timescale ~container ~video ~video_rfc6381 video_segments
       ; audio_adaptation_set ~is_live ~timescale ~container ~audio ~audio_rfc6381 audio_segments
-      ] @ (match storyboard with
-           | None -> []
-           | Some sb -> [ storyboard_adaptation_set sb ])
+      ]
     in
     tag "Period" [] adaptation_sets
   in

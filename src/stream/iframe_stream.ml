@@ -77,9 +77,10 @@ let create ~env ~storyboard =
   let encode_args =
     [ "-f"; "image2pipe"; "-framerate"; "1"; "-i"; "pipe:0";
       "-vf"; vf;
-      "-c:v"; "libx264"; "-preset"; "ultrafast"; "-crf"; "23";
+      "-c:v"; "libx264"; "-preset"; "fast"; "-crf"; "18";
+      "-tune"; "stillimage";
       "-x264-params"; "keyint=1:min-keyint=1";
-      "-pix_fmt"; "yuv420p"; "-vsync"; "0";
+      "-pix_fmt"; "yuv420p"; "-fps_mode"; "passthrough";
       "-movflags"; "+frag_keyframe+empty_moov+default_base_moof+separate_moof";
       "-frag_duration"; "0";
       "-f"; "mp4"; "pipe:1" ]

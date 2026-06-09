@@ -254,7 +254,7 @@ let master t ~session_id:_ ~base_url:_ ~profile =
   in
   let video_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.video) in
   let audio_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.audio) in
-  Hls.master ~profile ?storyboard:t.storyboard ?iframe_stream:(iframe_stream t) ~title:t.title
+  Hls.master ~profile ?iframe_stream:(iframe_stream t) ~title:t.title
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw ()
@@ -297,7 +297,7 @@ let dash_mpd t =
   let container = Producer.Shape.container (Producer.shape t.video) in
   let video_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.video) in
   let audio_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.audio) in
-  Dash.mpd ?storyboard:t.storyboard ~title:t.title ~is_live:t.is_live
+  Dash.mpd ~title:t.title ~is_live:t.is_live
     ~start_walltime_ms:t.start_walltime_ms ~container
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
@@ -312,8 +312,6 @@ let segment t ~rendition ~id =
   match rendition with
   | `Video -> Producer.fetch_segment t.video ~id
   | `Audio -> Producer.fetch_segment t.audio ~id
-
-let storyboard t = t.storyboard
 
 let close t =
   (try Producer.close t.video with _ -> ());

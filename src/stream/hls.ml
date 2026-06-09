@@ -139,7 +139,7 @@ let media ?(profile = generic_profile) ?(media_sequence = 0) ?program_date_time
     (header @ body_prefix @ pdt_line @ segment_lines ~is_live rendition ext segments @ ending)
   ^ "\n"
 
-let master ?(profile = generic_profile) ?storyboard ?iframe_stream ~title
+let master ?(profile = generic_profile) ?iframe_stream ~title
     ~(video : Stream.t) ~(audio : Stream.t)
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw () =
@@ -199,17 +199,6 @@ let master ?(profile = generic_profile) ?storyboard ?iframe_stream ~title
       (dynamic_range_string dr)
       hdcp_attr
   in
-  let image_stream =
-    match storyboard with
-    | Some sb ->
-      let tile_w = Storyboard.columns sb * Storyboard.thumb_width sb in
-      let tile_h = Storyboard.rows sb * Storyboard.thumb_height sb in
-      [ ""; Stdlib.Printf.sprintf
-          "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=5000,RESOLUTION=%dx%d,CODECS=\"jpeg\",URI=\"storyboard/media.m3u8\",TILES=\"%dx%d\""
-          tile_w tile_h
-          (Storyboard.columns sb) (Storyboard.rows sb) ]
-    | None -> []
-  in
   let iframe_stream_inf =
     match profile.iframe_stream, iframe_stream with
     | true, Some ifs ->
@@ -223,31 +212,8 @@ let master ?(profile = generic_profile) ?storyboard ?iframe_stream ~title
   in
   String.concat ~sep:"\n"
     (header @ independent @ session_data @ [ ""; media_audio; ""; stream_inf;
-                                             "video/media.m3u8" ] @ image_stream @ iframe_stream_inf)
+                                             "video/media.m3u8" ] @ iframe_stream_inf)
   ^ "\n"
-
-let storyboard_media sb =
-  let count = Storyboard.count sb in
-  let max_dur =
-    List.init count ~f:(fun i -> Storyboard.fragment_duration sb ~id:i)
-    |> List.fold ~init:0. ~f:Float.max
-  in
-  let target_duration = Stdlib.int_of_float (Stdlib.ceil max_dur) in
-  let header =
-    [ "#EXTM3U"
-    ; "#EXT-X-VERSION:7"
-    ; Stdlib.Printf.sprintf "#EXT-X-TARGETDURATION:%d" target_duration
-    ; "#EXT-X-PLAYLIST-TYPE:VOD"
-    ]
-  in
-  let segments =
-    List.init count ~f:(fun i ->
-      let dur = Storyboard.fragment_duration sb ~id:i in
-      [ Stdlib.Printf.sprintf "#EXTINF:%s," (extinf_duration dur)
-      ; Stdlib.Printf.sprintf "%d.jpg" i ])
-    |> List.concat
-  in
-  String.concat ~sep:"\n" (header @ segments @ [ "#EXT-X-ENDLIST" ]) ^ "\n"
 
 let iframe_media iframe =
   let count = Iframe_stream.frame_count iframe in

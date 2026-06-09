@@ -134,22 +134,6 @@ let serve t ~path =
     | ["dash.mpd"] ->
       let body = Stream.Source.dash_mpd source in
       Ok { content_type = Stream.Dash.content_type; body; accept_ranges = false }
-    | ["storyboard"; "media.m3u8"] ->
-      (match Stream.Source.storyboard source with
-       | None -> Error Not_found
-       | Some sb ->
-         let body = Stream.Hls.storyboard_media sb in
-         Ok { content_type = "application/vnd.apple.mpegurl"; body; accept_ranges = false })
-    | ["storyboard"; filename] ->
-      (match Stream.Source.storyboard source with
-       | None -> Error Not_found
-       | Some sb ->
-         let id =
-           String.chop_suffix_exn filename ~suffix:".jpg"
-           |> Int.of_string
-         in
-         let body = Stream.Storyboard.fetch sb ~id in
-         Ok { content_type = "image/jpeg"; body; accept_ranges = false })
     | ["iframe"; "media.m3u8"] ->
       (match Stream.Source.iframe_stream source with
        | None -> Error Not_found
