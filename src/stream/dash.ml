@@ -127,10 +127,54 @@ let audio_adaptation_set ~is_live ~timescale ~container
         ]
     ]
 
+let trickmode_adaptation_set (iframe : Storyboard.t) =
+  let frame_count = Storyboard.frame_count iframe in
+  let dur = Storyboard.frame_duration_secs iframe in
+  let total_dur = Float.of_int frame_count *. dur in
+  let data_len = String.length (Storyboard.data iframe) in
+  let bandwidth =
+    match Float.(total_dur > 0.) with
+    | true -> Float.to_int (Float.of_int (data_len * 8) /. total_dur)
+    | false -> 0
+  in
+  let timescale = 1000 in
+  let dur_ticks = Float.to_int (dur *. 1000.0) in
+  let init_range = Printf.sprintf "0-%d" (iframe.init_end - 1) in
+  let segment_urls =
+    Array.to_list iframe.frame_ranges
+    |> List.map ~f:(fun (offset, len) ->
+      tag "SegmentURL"
+        [ attr "mediaRange" (Printf.sprintf "%d-%d" offset (offset + len - 1)) ] [])
+  in
+  tag "AdaptationSet"
+    [ attr "mimeType" "video/mp4"
+    ; attr "codecs" "avc1.42c00d"
+    ; attr "contentType" "video"
+    ]
+    [ tag "EssentialProperty"
+        [ attr "schemeIdUri" "http://dashif.org/guidelines/trickmode"
+        ; attr "value" "video"
+        ] []
+    ; tag "Representation"
+        [ attr "id" "trickmode"
+        ; attr "bandwidth" (Int.to_string bandwidth)
+        ; attr "width" (Int.to_string (Storyboard.thumb_width iframe))
+        ; attr "height" (Int.to_string (Storyboard.thumb_height iframe))
+        ]
+        [ tag "BaseURL" [] [ `Data "iframe/stream.mp4" ]
+        ; tag "SegmentList"
+            [ attr "timescale" (Int.to_string timescale)
+            ; attr "duration" (Int.to_string dur_ticks)
+            ]
+            (tag "Initialization" [ attr "range" init_range ] []
+             :: segment_urls)
+        ]
+    ]
+
 let mpd ~title ~is_live ~start_walltime_ms ~container
       ~(video : Stream.t) ~(audio : Stream.t)
       ~video_rfc6381 ~audio_rfc6381
-      ~video_segments ~audio_segments () =
+      ~video_segments ~audio_segments ?iframe_stream () =
   let timescale = 1000 in
   let duration_secs =
     Float.max (total_duration_secs video_segments) (total_duration_secs audio_segments)
@@ -167,7 +211,9 @@ let mpd ~title ~is_live ~start_walltime_ms ~container
     let adaptation_sets =
       [ video_adaptation_set ~is_live ~timescale ~container ~video ~video_rfc6381 video_segments
       ; audio_adaptation_set ~is_live ~timescale ~container ~audio ~audio_rfc6381 audio_segments
-      ]
+      ] @ (match iframe_stream with
+           | None -> []
+           | Some ifs -> [ trickmode_adaptation_set ifs ])
     in
     tag "Period" [] adaptation_sets
   in

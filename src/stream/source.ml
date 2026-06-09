@@ -291,7 +291,7 @@ let dash_mpd t =
     ~start_walltime_ms:t.start_walltime_ms ~container
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
-    ~video_segments ~audio_segments ()
+    ~video_segments ~audio_segments ?iframe_stream:(iframe_stream t) ()
 
 let init_segment t ~rendition =
   match rendition with
