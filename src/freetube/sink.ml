@@ -115,8 +115,9 @@ let terminated = function
   | Url_consumer -> None
 
 let airplay ~env ~sw ~device ~vendor ~ntp =
+  let fs = Eio.Stdenv.fs env in
   let credentials =
-    match Airplay_credentials.load ~pairing_id:(Airplay.Client.pairing_id device) with
+    match Airplay_credentials.load ~fs ~pairing_id:(Airplay.Client.pairing_id device) with
     | Some entry -> entry
     | None ->
         Printf.failwithf "No stored AirPlay credentials for %s (pair first)"
@@ -128,7 +129,8 @@ let airplay ~env ~sw ~device ~vendor ~ntp =
 
 let probe_airplay ~env ~(client : Airplay.Client.t) =
   let pairing_id = client.pairing_id in
-  match Airplay_credentials.load ~pairing_id with
+  let fs = Eio.Stdenv.fs env in
+  match Airplay_credentials.load ~fs ~pairing_id with
   | None -> Error `No_credentials
   | Some credentials ->
     let net = Eio.Stdenv.net env in

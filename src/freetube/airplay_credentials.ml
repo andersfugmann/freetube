@@ -14,32 +14,32 @@ let data_dir () =
 let path_for ~pairing_id =
   Stdlib.Filename.concat (data_dir ()) (pairing_id ^ ".json")
 
-let mkdir_p dir =
+let mkdir_p ~fs dir =
   let rec loop dir =
-    match Stdlib.Sys.file_exists dir with
+    match Eio.Path.is_directory Eio.Path.(fs / dir) with
     | true -> ()
     | false ->
-        loop (Stdlib.Filename.dirname dir);
-        (try Stdlib.Sys.mkdir dir 0o700 with Sys_error _ -> ())
+      loop (Stdlib.Filename.dirname dir);
+      (try Eio.Path.mkdir Eio.Path.(fs / dir) ~perm:0o700 with Eio.Io _ -> ())
   in
   loop dir
 
-let load ~pairing_id =
+let load ~fs ~pairing_id =
   let path = path_for ~pairing_id in
-  match Stdlib.Sys.file_exists path with
+  match Eio.Path.is_file Eio.Path.(fs / path) with
   | false -> None
   | true ->
-      let contents = Stdio.In_channel.read_all path in
-      match Yojson.Safe.from_string contents |> Airplay_protocol.Pairing.credentials_of_yojson with
-      | Ok entry -> Some entry
-      | Error error ->
-          Log.warn (fun m -> m "Failed to parse %s: %s" path error);
-          None
+    let contents = Eio.Path.load Eio.Path.(fs / path) in
+    match Yojson.Safe.from_string contents |> Airplay_protocol.Pairing.credentials_of_yojson with
+    | Ok entry -> Some entry
+    | Error error ->
+        Log.warn (fun m -> m "Failed to parse %s: %s" path error);
+        None
 
-let save (entry : Airplay_protocol.Pairing.credentials) =
+let save ~fs entry =
   let path = path_for ~pairing_id:(Airplay_protocol.Pairing.pairing_id entry) in
-  mkdir_p (Stdlib.Filename.dirname path);
+  mkdir_p ~fs (Stdlib.Filename.dirname path);
   let tmp = path ^ ".tmp" in
-  Stdio.Out_channel.write_all tmp
-    ~data:(Airplay_protocol.Pairing.credentials_to_yojson entry |> Yojson.Safe.to_string);
-  Stdlib.Sys.rename tmp path
+  let data = Airplay_protocol.Pairing.credentials_to_yojson entry |> Yojson.Safe.to_string in
+  Eio.Path.save Eio.Path.(fs / tmp) data ~create:(`Or_truncate 0o600);
+  Eio.Path.rename Eio.Path.(fs / tmp) Eio.Path.(fs / path)

@@ -44,7 +44,7 @@ let handle_pair_start_json ~(app : _ App.t) parsed =
       respond_json ~status:`OK
         ~json:(Api.Airplay_pairing.pair_start_response_to_yojson { session_id })
 
-let handle_pair_finish_json ~clock:_ parsed =
+let handle_pair_finish_json ~fs ~clock:_ parsed =
   let@! request =
     Json_io.parse_of_yojson Api.Airplay_pairing.pair_finish_request_of_yojson parsed,
     (`Bad_request, "AirPlay PIN verification") in
@@ -64,7 +64,7 @@ let handle_pair_finish_json ~clock:_ parsed =
       respond_string ~status
         (Printf.sprintf "AirPlay PIN verification failed: %s" message)
   | Ok (Ok credentials) ->
-      Airplay_credentials.save credentials;
+      Airplay_credentials.save ~fs credentials;
       let pairing_id = Airplay_protocol.Pairing.pairing_id credentials in
       let response : Api.Airplay_pairing.pair_finish_response = { pairing_id } in
       respond_json ~status:`OK
@@ -79,5 +79,5 @@ let handle_pair ~(app : _ App.t) request =
     | _ -> false
   in
   match has_session_id with
-  | true -> handle_pair_finish_json ~clock:() parsed
+  | true -> handle_pair_finish_json ~fs:(Eio.Stdenv.fs app.env) ~clock:() parsed
   | false -> handle_pair_start_json ~app parsed

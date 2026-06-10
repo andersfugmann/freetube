@@ -41,19 +41,14 @@ let resolve_path ~root path =
 
 type range = { start : int; length : int }
 
-let parse_int s =
-  match Int.of_string s with
-  | value -> Some value
-  | exception _ -> None
-
 let parse_range header ~total =
   let ( let* ) o f = Option.bind o ~f in
   let* spec = String.chop_prefix header ~prefix:"bytes=" in
   let first = String.split spec ~on:',' |> List.hd_exn |> String.strip in
   match String.split first ~on:'-' with
   | [ start_s; end_s ] ->
-      let start_o = parse_int (String.strip start_s) in
-      let end_o = parse_int (String.strip end_s) in
+      let start_o = Stdlib.int_of_string_opt (String.strip start_s) in
+      let end_o = Stdlib.int_of_string_opt (String.strip end_s) in
       (match start_o, end_o with
        | None, Some suffix when suffix > 0 ->
            let length = Int.min suffix total in
@@ -119,15 +114,10 @@ let serve ~sw ~root (request : Piaf.Request.t) =
             respond_range_not_satisfiable ~total
         | _, _ ->
             let range = parsed_range in
-            let offset, length =
+            let status, offset, length =
               match range with
-              | None -> 0, total
-              | Some r -> r.start, r.length
-            in
-            let status : Piaf.Status.t =
-              match range with
-              | None -> `OK
-              | Some _ -> `Partial_content
+              | None -> `OK, 0, total
+              | Some r -> `Partial_content, r.start, r.length
             in
             let headers = response_headers ~content_type ~length ~range ~total in
             match meth with
