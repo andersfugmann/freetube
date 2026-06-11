@@ -31,9 +31,9 @@ let handle_put_config ~(app : _ App.t) ~id request =
       Json_io.raise_http `Bad_request
         (Printf.sprintf "Update device config: URL id %s does not match body id %s" id cfg.id)
   | true ->
-      Device_store.save app.device_store cfg;
+      Device_store.save ~fs:(Eio.Stdenv.fs app.env) app.device_store cfg;
       respond_json ~status:`OK (Device.to_yojson cfg)
 
 let handle_delete_config ~(app : _ App.t) ~id =
-  Device_store.remove app.device_store ~id;
+  Device_store.remove ~fs:(Eio.Stdenv.fs app.env) app.device_store ~id;
   respond_string ~status:`No_content ""

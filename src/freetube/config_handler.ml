@@ -3,7 +3,7 @@ open! Base
 let handle_get (_ : Piaf.Request.t) =
   Json_io.respond_json ~status:`OK (Config.to_yojson (Config.get ()))
 
-let handle_put request =
+let handle_put ~(app : _ App.t) request =
   let body =
     match Json_io.read_body request with
     | Ok s -> s
@@ -13,5 +13,5 @@ let handle_put request =
   match Config.of_yojson json with
   | Error msg -> Json_io.raise_http `Bad_request msg
   | Ok cfg ->
-    let updated = Config_global.update (fun _ -> cfg) in
+    let updated = Config_global.update ~fs:(Eio.Stdenv.fs app.env) (fun _ -> cfg) in
     Json_io.respond_json ~status:`OK (Config.to_yojson updated)

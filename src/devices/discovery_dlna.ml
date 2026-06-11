@@ -24,7 +24,7 @@ let device_of_client ~clock (client : Dlna.Client.t) =
     ~max_width:3840 ~max_height:2160
     ~last_seen:(now clock) client
 
-let scan ~net ~clock ~client ~device_store =
+let scan ~net ~clock ~client ~fs ~device_store =
   let entries =
     Dlna_protocol.Discovery.scan ~net ~clock ~client ()
     |> List.map ~f:(device_of_client ~clock)
@@ -32,19 +32,20 @@ let scan ~net ~clock ~client ~device_store =
   List.iter entries ~f:(fun device ->
     match Device_store.find device_store ~id:device.id with
     | None ->
-        Device_store.save device_store device;
+        Device_store.save ~fs device_store device;
         log_discovered device
     | Some existing ->
-        Device_store.save device_store
+        Device_store.save ~fs device_store
           { existing with client = device.client; last_seen = device.last_seen })
 
 let run ~env ~device_store ~interval =
   let net = Eio.Stdenv.net env in
+  let fs = Eio.Stdenv.fs env in
   let clock = Eio.Stdenv.clock env in
   Eio.Switch.run @@ fun sw ->
   let client = Http_client.init ~sw ~env () in
   let rec loop () =
-    (match Result.try_with (fun () -> scan ~net ~clock ~client ~device_store) with
+    (match Result.try_with (fun () -> scan ~net ~clock ~client ~fs ~device_store) with
      | Ok () -> ()
      | Error exn ->
          Log.err (fun m -> m "Discovery scan failed: %s" (Exn.to_string exn)));

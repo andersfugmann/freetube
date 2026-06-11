@@ -44,7 +44,7 @@ let routers ~app ~static_root ~sw ~client_address =
   ]
   in
   let put = one_of [
-    s "config" /? nil @--> Config_handler.handle_put;
+    s "config" /? nil @--> Config_handler.handle_put ~app;
     s "devices" / str / s "config" /? nil @--> (fun id request ->
       Devices_handler.handle_put_config ~app ~id request);
   ]

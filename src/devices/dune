@@ -1,6 +1,6 @@
 (library
  (name devices)
- (libraries util base stdio xdg eio eio.unix yojson logs
+ (libraries util base xdg eio eio.unix yojson logs
    airplay airplay_protocol dlna dlna_protocol codec api device)
  (inline_tests)
  (preprocess (pps ppx_jane ppx_deriving_yojson)))

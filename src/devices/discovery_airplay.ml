@@ -28,7 +28,7 @@ let device_of_client ~clock (client : Airplay.Client.t) =
     ~max_width:3840 ~max_height:2160
     ~last_seen:(now clock) client
 
-let scan ~env ~device_store =
+let scan ~env ~fs ~device_store =
   let net = Eio.Stdenv.net env in
   let clock = Eio.Stdenv.clock env in
   let clients = Airplay_protocol.Discovery.scan ~net ~clock ~timeout:5.0 () in
@@ -36,16 +36,17 @@ let scan ~env ~device_store =
     let device = device_of_client ~clock client in
     match Device_store.find device_store ~id:device.id with
     | None ->
-        Device_store.save device_store device;
+        Device_store.save ~fs device_store device;
         log_discovered device
     | Some existing ->
-        Device_store.save device_store
+        Device_store.save ~fs device_store
           { existing with client = device.client; last_seen = device.last_seen })
 
 let run ~env ~device_store ~interval =
+  let fs = Eio.Stdenv.fs env in
   let clock = Eio.Stdenv.clock env in
   let rec loop () =
-    (match Result.try_with (fun () -> scan ~env ~device_store) with
+    (match Result.try_with (fun () -> scan ~env ~fs ~device_store) with
      | Ok () -> ()
      | Error exn ->
          Log.err (fun m -> m "AirPlay discovery scan failed: %s" (Exn.to_string exn)));
@@ -53,4 +54,3 @@ let run ~env ~device_store ~interval =
     loop ()
   in
   loop ()
-

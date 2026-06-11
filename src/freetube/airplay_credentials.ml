@@ -14,31 +14,22 @@ let data_dir () =
 let path_for ~pairing_id =
   Stdlib.Filename.concat (data_dir ()) (pairing_id ^ ".json")
 
-let mkdir_p ~fs dir =
-  let rec loop dir =
-    match Eio.Path.is_directory Eio.Path.(fs / dir) with
-    | true -> ()
-    | false ->
-      loop (Stdlib.Filename.dirname dir);
-      (try Eio.Path.mkdir Eio.Path.(fs / dir) ~perm:0o700 with Eio.Io _ -> ())
-  in
-  loop dir
+let decode ~path contents =
+  match Yojson.Safe.from_string contents |> Airplay_protocol.Pairing.credentials_of_yojson with
+  | Ok entry -> Some entry
+  | Error error ->
+      Log.warn (fun m -> m "Failed to parse %s: %s" path error);
+      None
 
 let load ~fs ~pairing_id =
   let path = path_for ~pairing_id in
   match Eio.Path.is_file Eio.Path.(fs / path) with
   | false -> None
-  | true ->
-    let contents = Eio.Path.load Eio.Path.(fs / path) in
-    match Yojson.Safe.from_string contents |> Airplay_protocol.Pairing.credentials_of_yojson with
-    | Ok entry -> Some entry
-    | Error error ->
-        Log.warn (fun m -> m "Failed to parse %s: %s" path error);
-        None
+  | true -> Eio.Path.load Eio.Path.(fs / path) |> decode ~path
 
 let save ~fs entry =
   let path = path_for ~pairing_id:(Airplay_protocol.Pairing.pairing_id entry) in
-  mkdir_p ~fs (Stdlib.Filename.dirname path);
+  Eio.Path.mkdirs ~exists_ok:true ~perm:0o700 Eio.Path.(fs / Stdlib.Filename.dirname path);
   let tmp = path ^ ".tmp" in
   let data = Airplay_protocol.Pairing.credentials_to_yojson entry |> Yojson.Safe.to_string in
   Eio.Path.save Eio.Path.(fs / tmp) data ~create:(`Or_truncate 0o600);

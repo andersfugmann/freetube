@@ -6,10 +6,11 @@ let () =
   Mirage_crypto_rng_unix.use_default ();
   Eio_main.run @@ fun env ->
   let cwd = Eio.Stdenv.cwd env in
+  let fs = Eio.Stdenv.fs env in
   let static_root = Eio.Path.(cwd / "static") in
   let clock = Eio.Stdenv.clock env in
-  let global = Freetube.Config_global.load () in
-  let device_store = Device_store.create () in
+  let global = Freetube.Config_global.load ~fs () in
+  let device_store = Device_store.create ~fs () in
   Eio.Switch.run @@ fun sw ->
   let ntp =
     Airplay_protocol.Ntp_server.start ~sw ~net:(Eio.Stdenv.net env)
