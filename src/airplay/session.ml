@@ -351,7 +351,7 @@ let connect_event_channel ~net ~sw ~address ~port ~shared_secret =
 let create ~env ~sw ~address ~port ~credentials ~ntp_port =
   Log.info (fun m -> m "AirPlay session starting against %s:%d" address port);
   let net = Eio.Stdenv.net env in
-  let local_ip = Local_ip.for_address ~address ~port in
+  let local_ip = Local_ip.for_address ~net ~address ~port in
   let conn2_ids = new_identifiers () in
   let conn2_uri = session_uri ~local_ip ~rtsp_session_id:conn2_ids.rtsp_session_id in
   let cseq = ref 0 in

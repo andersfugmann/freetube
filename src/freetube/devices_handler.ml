@@ -8,32 +8,32 @@ let handle_list ~(app : _ App.t) =
     Device.list_response_to_yojson { devices }
     |> Yojson.Safe.to_string
   in
-  let headers = Piaf.Headers.of_list [ "content-type", "application/json" ] in
-  Piaf.Response.of_string ~headers ~body `OK
+  Ok (Response.ok ~content_type:(Explicit "application/json") body)
 
-let respond_string ~status body = Piaf.Response.of_string ~body status
+let respond_string body =
+  Response.ok ~content_type:No_content_type body
 
-let respond_json ~status payload =
-  let headers = Piaf.Headers.of_list [ "content-type", "application/json" ] in
-  Piaf.Response.of_string ~headers ~body:(Yojson.Safe.to_string payload) status
+let respond_json payload =
+  Response.ok ~content_type:(Explicit "application/json")
+    (Yojson.Safe.to_string payload)
 
 let handle_get_config ~(app : _ App.t) ~id =
   match Device_store.find app.device_store ~id with
-  | None -> respond_string ~status:`Not_found "No per-device config"
-  | Some cfg -> respond_json ~status:`OK (Device.to_yojson cfg)
+  | None -> Error `Not_found
+  | Some cfg -> Ok (respond_json (Device.to_yojson cfg))
 
 let handle_put_config ~(app : _ App.t) ~id request =
-  let@! payload = Json_io.read_body request, (`Bad_request, "Update device config") in
-  let@! json = Json_io.parse_json payload, (`Bad_request, "Update device config") in
-  let@! cfg = Json_io.parse_of_yojson Device.of_yojson json, (`Bad_request, "Update device config") in
+  let@! payload = Json_io.read_body request, "Update device config" in
+  let@! json = Json_io.parse_json payload, "Update device config" in
+  let@! cfg = Json_io.parse_of_yojson Device.of_yojson json, "Update device config" in
   match String.equal cfg.id id with
   | false ->
-      Json_io.raise_http `Bad_request
-        (Printf.sprintf "Update device config: URL id %s does not match body id %s" id cfg.id)
+      Error (`Bad_param
+               (Printf.sprintf "Update device config: URL id %s does not match body id %s" id cfg.id))
   | true ->
       Device_store.save ~fs:(Eio.Stdenv.fs app.env) app.device_store cfg;
-      respond_json ~status:`OK (Device.to_yojson cfg)
+      Ok (respond_json (Device.to_yojson cfg))
 
 let handle_delete_config ~(app : _ App.t) ~id =
   Device_store.remove ~fs:(Eio.Stdenv.fs app.env) app.device_store ~id;
-  respond_string ~status:`No_content ""
+  Ok (Response.no_content ())

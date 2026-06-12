@@ -36,15 +36,20 @@ let parse_video_info stdout =
   |> Video_info.of_yojson
   |> Result.ok_or_failwith
 
+let file_size_or_minus_one path =
+  Eio_unix.run_in_systhread (fun () ->
+    try (Unix.stat path).st_size
+    with
+    | Unix.Unix_error _ -> -1
+    | Sys_error _ -> -1)
+
 let extract_json ?(timeout=10.0) ~env ~cookie_path video_id =
   let clock = Eio.Stdenv.clock env in
   let proc_mgr = Eio.Stdenv.process_mgr env in
   Eio.Time.with_timeout_exn clock timeout (fun () ->
       Eio.Switch.run @@ fun sw ->
       let args = argv ~cookie_path video_id in
-      let cookie_size =
-        try (Unix.stat cookie_path).st_size with _ -> -1
-      in
+      let cookie_size = file_size_or_minus_one cookie_path in
       Log.info (fun m ->
         m "spawning yt-dlp: cookie_path=%s cookie_bytes=%d argv=%s"
           cookie_path cookie_size

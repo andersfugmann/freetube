@@ -1,17 +1,18 @@
 open! Base
 
-let handle_get (_ : Piaf.Request.t) =
-  Json_io.respond_json ~status:`OK (Config.to_yojson (Config.get ()))
+let handle_get (_ : Request.t) =
+  Ok (Response.ok ~content_type:(Explicit "application/json")
+        (Config.to_yojson (Config.get ()) |> Yojson.Safe.to_string))
 
 let handle_put ~(app : _ App.t) request =
-  let body =
-    match Json_io.read_body request with
-    | Ok s -> s
-    | Error msg -> Json_io.raise_http `Bad_request msg
+  let ( let* ) result f = Result.bind result ~f in
+  let* body = Json_io.read_body request |> Result.map_error ~f:(fun (`Bad_param msg) -> `Bad_param msg) in
+  let* json =
+    match Yojson.Safe.from_string body with
+    | json -> Ok json
+    | exception exn -> Error (`Bad_param (Exn.to_string exn))
   in
-  let json = Yojson.Safe.from_string body in
-  match Config.of_yojson json with
-  | Error msg -> Json_io.raise_http `Bad_request msg
-  | Ok cfg ->
-    let updated = Config_global.update ~fs:(Eio.Stdenv.fs app.env) (fun _ -> cfg) in
-    Json_io.respond_json ~status:`OK (Config.to_yojson updated)
+  let* cfg = Config.of_yojson json |> Result.map_error ~f:(fun msg -> `Bad_param msg) in
+  let updated = Config_global.update ~fs:(Eio.Stdenv.fs app.env) (fun _ -> cfg) in
+  Ok (Response.ok ~content_type:(Explicit "application/json")
+        (Config.to_yojson updated |> Yojson.Safe.to_string))

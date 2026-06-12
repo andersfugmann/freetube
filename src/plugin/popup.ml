@@ -110,7 +110,7 @@ let device_icon (d : Device.t) =
 
 let vendor_label (v : Api.Vendor.t) = Api.Vendor.to_string v
 
-let render_device_list ~server ~now (devs : Device.list_response)
+let render_device_list ~server (devs : Device.list_response)
     ~(on_select : Device.t -> unit) =
   match by_id "devices" with
   | None -> ()
@@ -118,9 +118,11 @@ let render_device_list ~server ~now (devs : Device.list_response)
       set_html container "";
       let sorted =
         List.sort devs.devices ~compare:(fun a b ->
+          let da = Device.entry_device a in
+          let db = Device.entry_device b in
           String.compare
-            (String.lowercase a.friendly_name)
-            (String.lowercase b.friendly_name))
+            (String.lowercase da.friendly_name)
+            (String.lowercase db.friendly_name))
       in
       (match List.is_empty sorted with
        | true ->
@@ -128,14 +130,15 @@ let render_device_list ~server ~now (devs : Device.list_response)
              "<div style=\"opacity:0.7;font-size:12px;padding:8px 0;\">\
               No devices found</div>"
        | false ->
-           List.iter sorted ~f:(fun (d : Device.t) ->
+           List.iter sorted ~f:(fun entry ->
+             let d = Device.entry_device entry in
              let row = Dom_html.createDiv document in
              set_attr row "class" "device-row";
              let name = d.friendly_name in
              let kind = device_type_label d in
              let icon = device_icon d in
              let vendor = vendor_label d.vendor in
-             let online = Float.(now -. d.last_seen < 120.) in
+             let online = Device.entry_available entry in
              let dot =
                match online with
                | true -> "<span class=\"dot online\"></span>"
@@ -372,7 +375,6 @@ let render_detail ~server (d : Device.t) ~back =
       ; max_width = Option.value (Int.of_string_opt (get_input_value (prefix ^ "max_width"))) ~default:3840
       ; max_height = Option.value (Int.of_string_opt (get_input_value (prefix ^ "max_height"))) ~default:2160
       ; stream_format
-      ; last_seen = d.last_seen
       }
     in
     (match by_id "cfg-status" with
@@ -502,6 +504,7 @@ let render_settings ~server ~back =
         let float_or id default = Option.value (Float.of_string_opt (get_input_value id)) ~default in
         let config : Config.t = {
           listen_port = cfg.listen_port;
+          mdns_hostname = cfg.mdns_hostname;
           session_ttl_seconds = cfg.session_ttl_seconds;
           ntp_port = cfg.ntp_port;
           transcode = get_checked "g-transcode";
@@ -557,10 +560,9 @@ and load_devices ~server =
   Api_client.get_devices ~server ~k:(function
     | Error e -> set_status ~err:true ("Error: " ^ e)
     | Ok (r : Device.list_response) ->
-        let now = Js.to_float (new%js Js.date_now)##getTime /. 1000. in
         set_status
           (Printf.sprintf "%d device(s)" (List.length r.devices));
-        render_device_list ~server ~now r ~on_select:(fun d ->
+        render_device_list ~server r ~on_select:(fun d ->
           render_detail ~server d ~back:(back_to_main ~server)))
 
 let () =

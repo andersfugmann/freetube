@@ -108,9 +108,6 @@ let device_icon (d : Device.t) =
 
 let render_picker ?(loading=false) (devs : Device.list_response) =
   remove_existing "freetube-picker";
-  let now =
-    Js.to_float (new%js Js.date_now)##getTime /. 1000.
-  in
   let overlay = Dom_html.createDiv document in
   set_attr overlay "id" "freetube-picker";
   set_attr overlay "style"
@@ -137,11 +134,14 @@ let render_picker ?(loading=false) (devs : Device.list_response) =
   Dom.appendChild panel title;
   let sorted =
     List.sort devs.devices ~compare:(fun a b ->
+      let da = Device.entry_device a in
+      let db = Device.entry_device b in
       String.compare
-        (String.lowercase a.friendly_name)
-        (String.lowercase b.friendly_name))
+        (String.lowercase da.friendly_name)
+        (String.lowercase db.friendly_name))
   in
-  List.iter sorted ~f:(fun (d : Device.t) ->
+  List.iter sorted ~f:(fun entry ->
+    let d = Device.entry_device entry in
     let row = Dom_html.createButton document in
     set_attr row "style"
       "display:flex;align-items:center;gap:10px;width:100%;text-align:left;\
@@ -151,7 +151,7 @@ let render_picker ?(loading=false) (devs : Device.list_response) =
     let name = d.friendly_name in
     let brand = Api.Vendor.to_string d.vendor in
     let icon = device_icon d in
-    let online = Float.(now -. d.last_seen < 120.) in
+    let online = Device.entry_available entry in
     let dot_style =
       match online with
       | true -> "display:inline-block;width:8px;height:8px;border-radius:50%;background:#4caf50;margin-left:4px;vertical-align:middle;"

@@ -34,10 +34,14 @@
   logs
   fmt
   yojson
+  lwt
+  obus
   stdio
   ezxmlm
   uri
+  ipaddr
   dns
+  magic-mime
   mirage-crypto
   mirage-crypto-ec
   mirage-crypto-pk

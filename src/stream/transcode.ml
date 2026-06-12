@@ -130,13 +130,14 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
       let upstream_init = M.init_segment s.inner in
       let upstream_seg = M.fetch_segment s.inner ~id in
       let input = upstream_init ^ upstream_seg.data in
-      let t0 = Unix.gettimeofday () in
+      let clock = Eio.Stdenv.clock s.env in
+      let t0 = Eio.Time.now clock in
       let output =
         run_transcode ~env:s.env ~input_format:s.input_format
           ~video_params:s.video_params ~audio_params:s.audio_params
           ~semaphore:s.semaphore input
       in
-      let elapsed = Unix.gettimeofday () -. t0 in
+      let elapsed = Eio.Time.now clock -. t0 in
       let seg_duration = Float.of_int upstream_seg.length_usec /. 1_000_000. in
       let speed = seg_duration /. elapsed in
       let kind = match s.video_params with Some _ -> "video" | None -> "audio" in

@@ -14,7 +14,7 @@ or repackaged on the fly as an HLS or DASH stream.
               ┌────────────────────────────────────────┐
               │                freetube                 │  process entrypoint +
               │  main.ml │ server.ml │ App.t │          │  HTTP dispatch (routes),
-              │  *_handler.ml │ Sessions registry (GC)  │  static / streamed file
+              │  *_handler.ml │ Sessions registry (GC)  │  streamed session routes
               │  Session.t = source + sink; Sink ADT    │
               └──────────────────┬──────────────────────┘
                                  │
@@ -199,8 +199,7 @@ Two JSON files under `$XDG_CONFIG_HOME/freetube/`:
   files are logged and skipped. Written via
   `PUT /devices/<id>/config`. Merged into the matching discovery entry
   by `id` at scan time; static entries (`is_static = true`) are seeded
-  straight into the cache with `last_seen = Float.infinity` so they
-  survive pruning. Keying on `id` (not `friendly_name`) means two
+  straight into the cache as `available = true`. Keying on `id` (not `friendly_name`) means two
   devices sharing a friendly name (e.g. an AirPlay and a DLNA
   endpoint on the same TV) have independent config.
 
@@ -217,7 +216,7 @@ WebM-remux moof+mdat pattern) pass through untouched.
 - `Devices.Discovery_airplay` — caches/enriches the `Airplay.Discovery`
   mDNS scan for `_airplay._tcp`. Each cache entry stores the opaque
   `Airplay.Client.t` verbatim (persisted via its yojson) plus freetube
-  enrichment (codecs, vendor, last_seen, is_static); `Devices_handler`
+  enrichment (codecs, vendor, available, is_static); `Devices_handler`
   projects it into the flat `Api.Device.airplay` wire DTO via the `Client`
   getters.
 - `Devices.Discovery_dlna` — caches/enriches the `Dlna.Discovery`
@@ -229,17 +228,23 @@ WebM-remux moof+mdat pattern) pass through untouched.
 The raw LAN scan lives in the standalone client libs (`Airplay.Discovery`,
 `Dlna.Discovery`); `devices` only adds freetube policy on top.
 
-Both publish into an `Atomic.t`-backed cache with TTL pruning and a
-JSON-file backing store. The HTTP `/devices` handler merges both.
+Both publish into an `Atomic.t`-backed cache with a JSON-file backing store.
+Discovery updates runtime `available` state from add/remove deltas, while
+persisted config stays in per-device JSON files. The HTTP `/devices` handler
+merges both.
 
 ### Server advertisement
 
-`Freetube.Mdns_advertise` runs a minimal mDNS responder that advertises
-the hostname `freetube.local` as an A record pointing to the server's LAN
-IP. This allows clients (browser extension, CLI) to reach the server at
-`http://freetube.local:5544` without manual IP configuration. The responder
-binds to UDP 5353, joins the 224.0.0.251 multicast group, and replies to
-A/ANY queries for `freetube.local` with a 120 s TTL.
+`Freetube.Mdns_advertise` delegates mDNS/DNS-SD advertisement to Avahi over
+D-Bus using `obus`. FreeTube creates an Avahi entry group and publishes:
+
+- An HTTP DNS-SD service (`_http._tcp`) named from the host label with TXT
+  `path=/` and port `listen_port`.
+- A host alias (`mdns_hostname`) for discovered local IPv4/IPv6 addresses
+  using `AVAHI_PUBLISH_NO_REVERSE`, so no reverse PTR is published.
+
+This keeps FreeTube out of the raw UDP 5353 path while preserving DNS-SD
+service browsing and direct `<mdns_hostname>.local` host resolution.
 
 ## HTTP layer
 
@@ -317,8 +322,7 @@ the standardized MPEG-DASH `isoff-on-demand` profile.
 
 - `uuid` — `Uuid.v4`, `Uuid.v4_uppercase`.
 - `local_ip` — `Local_ip.for_peer`, `Local_ip.for_address`.
-- `freetube_http.Json_io` — JSON request/response helpers.
-- `freetube_http.Streamed_file` — file-fd-lifetime helper for static.
+- `freetube_http.Json_io` — JSON request parsing helpers.
 - `airplay.Identity` — masquerade-as-iPhone constants (one place to
   change if Apple ever rejects them).
 - `log_src` — per-module `Logs.Src.t` registration.

@@ -11,22 +11,30 @@ let path_for ~id =
   Stdlib.Filename.concat (dir ()) (Slug.of_friendly_name id ^ ".json")
 
 let load_file ~fs path =
-  match
-    Result.try_with (fun () ->
-      Eio.Path.load Eio.Path.(fs / path)
-      |> Yojson.Safe.from_string
-      |> Device.of_yojson)
-  with
-  | Ok (Ok t) -> Some t
-  | Ok (Error msg) ->
+  let result =
+    let ( let* ) result f = Result.bind result ~f in
+    let* raw =
+      Result.try_with (fun () -> Eio.Path.load Eio.Path.(fs / path))
+      |> Result.map_error ~f:(fun exn -> `Read exn)
+    in
+    let* json =
+      Result.try_with (fun () -> Yojson.Safe.from_string raw)
+      |> Result.map_error ~f:(fun exn -> `Parse (Exn.to_string exn))
+    in
+    Device.of_yojson json |> Result.map_error ~f:(fun msg -> `Parse msg)
+  in
+  match result with
+  | Ok t -> Some (t, false)
+  | Error (`Parse msg) ->
       Log.warn (fun m -> m "Failed to parse %s: %s — skipping" path msg);
       None
-  | Error exn ->
+  | Error (`Read exn) ->
       Log.warn (fun m ->
         m "Failed to read %s: %s — skipping" path (Exn.to_string exn));
       None
 
-type t = Device.t list ref
+type entry = Device.discovered
+type t = entry list ref
 
 let create ~fs () : t =
   let dir = dir () in
@@ -41,29 +49,60 @@ let create ~fs () : t =
   in
   ref entries
 
-let all (t : t) = !t
+let all t = !t
 
-let find (t : t) ~id =
-  List.find !t ~f:(fun (d : Device.t) ->
-    String.equal d.id id)
+let all_devices t =
+  List.map !t ~f:Device.entry_device
 
+let find t ~id =
+  List.find_map !t ~f:(fun entry ->
+    let (device : Device.t) = Device.entry_device entry in
+    match String.equal device.id id with
+    | true -> Some device
+    | false -> None)
 
-let save ~fs (t : t) (device : Device.t) =
+let find_entry t ~id =
+  List.find !t ~f:(fun entry ->
+    let (device : Device.t) = Device.entry_device entry in
+    String.equal device.id id)
+
+let set_available t ~id ~available =
+  t :=
+    List.map !t ~f:(fun entry ->
+      let (device : Device.t) = Device.entry_device entry in
+      match String.equal device.id id with
+      | true -> device, available
+      | false -> entry)
+
+let save ~fs t (device : Device.t) =
   Eio.Path.mkdirs ~exists_ok:true ~perm:0o700 Eio.Path.(fs / dir ());
   let path = path_for ~id:device.id in
   let tmp = path ^ ".tmp" in
   let data =
-    Device.to_yojson device |> Yojson.Safe.pretty_to_string
+    Device.to_yojson device
+    |> Yojson.Safe.pretty_to_string
   in
   Eio.Path.save Eio.Path.(fs / tmp) data ~create:(`Or_truncate 0o600);
   Eio.Path.rename Eio.Path.(fs / tmp) Eio.Path.(fs / path);
-  t := device :: List.filter !t ~f:(fun (d : Device.t) ->
-    not (String.equal d.id device.id))
+  let available =
+    match find_entry t ~id:device.id with
+    | Some entry -> Device.entry_available entry
+    | None -> false
+  in
+  t := (device, available) :: List.filter !t ~f:(fun entry ->
+    let (existing : Device.t) = Device.entry_device entry in
+    not (String.equal existing.id device.id))
 
-let remove ~fs (t : t) ~id =
+let remove ~fs t ~id =
   let path = path_for ~id in
   (match Eio.Path.is_file Eio.Path.(fs / path) with
-   | true -> (try Eio.Path.unlink Eio.Path.(fs / path) with _ -> ())
+   | true ->
+       (match Result.try_with (fun () -> Eio.Path.unlink Eio.Path.(fs / path)) with
+        | Ok () -> ()
+        | Error exn ->
+            Log.warn (fun m ->
+              m "Failed to remove %s: %s" path (Exn.to_string exn)))
    | false -> ());
-  t := List.filter !t ~f:(fun (d : Device.t) ->
-    not (String.equal d.id id))
+  t := List.filter !t ~f:(fun entry ->
+    let (device : Device.t) = Device.entry_device entry in
+    not (String.equal device.id id))

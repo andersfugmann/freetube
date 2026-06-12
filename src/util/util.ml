@@ -3,7 +3,6 @@ open! Base
 module Http_client : Http_client.S = Piaf_backend
 module Local_ip = Local_ip
 module Log_src = Log_src
-module Mcast = Mcast
 module Mkdir_p = Mkdir_p
 module Uuid = Uuid
 

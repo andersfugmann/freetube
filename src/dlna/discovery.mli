@@ -1,12 +1,16 @@
 open! Base
 
-(* Browse the LAN for DLNA MediaRenderers via SSDP, fetching and parsing each
-   device description into a [Dlna.Client.t]. [client] is an HTTP client used for
-   the description fetch. *)
-val scan :
-  net:_ Eio.Net.t ->
-  clock:_ Eio.Time.clock ->
-  client:Util.Http_client.t ->
+type t
+
+val init :
+  env:Eio_unix.Stdenv.base ->
   ?timeout:float ->
+  interval:float ->
   unit ->
-  Dlna.Client.t list
+  t
+
+val start :
+  t ->
+  on_added:(Dlna.Client.t -> unit) ->
+  on_removed:(id:string -> unit) ->
+  unit

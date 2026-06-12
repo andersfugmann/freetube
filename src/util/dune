@@ -1,6 +1,5 @@
 (library
  (name util)
  (libraries config base eio eio.unix eio_main ohex piaf uri unix logs mirage-crypto-rng)
- (foreign_stubs (language c) (names mcast_stubs))
  (inline_tests)
  (preprocess (pps ppx_inline_test ppx_expect)))

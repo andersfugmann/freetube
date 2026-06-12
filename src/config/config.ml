@@ -31,6 +31,7 @@ type discovery = {
 
 type t = {
   listen_port : int;
+  mdns_hostname : string;
   session_ttl_seconds : float;
   ntp_port : int;
   transcode : bool;
@@ -44,6 +45,7 @@ type t = {
 
 let default = {
   listen_port = 5544;
+  mdns_hostname = "freetube.local";
   session_ttl_seconds = 1800.0;
   ntp_port = 7010;
   transcode = false;

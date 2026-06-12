@@ -24,6 +24,18 @@ Sessions are idle-GC'd after 60 seconds of no activity.
 
 ## Endpoints
 
+### Global config
+
+#### `GET /config`
+
+Returns the current global config JSON.
+
+#### `PUT /config`
+
+Replaces the global config JSON. The payload matches `Config.t`, including:
+
+- `mdns_hostname` — hostname advertised over mDNS (`"freetube.local"` by default). Its host label is used as the DNS-SD HTTP service instance name (`<label>._http._tcp.local`).
+
 ### Sessions
 
 #### `POST /sessions`
@@ -176,10 +188,9 @@ Every hit `touch`es the session, deferring GC.
 
 #### `GET /devices`
 
-List discovered AirPlay + DLNA devices. Response is a flat list with a
-`protocol` field. Each entry includes the derived `vendor`
-(`"Apple"`, `"Samsung"`, `"Lg"`, `"Generic"`, or `null`) used to gate
-advisory HLS tags for that destination.
+List discovered AirPlay + DLNA devices. Response is a list of tuples:
+`[device, available]`, where `available` is runtime discovery state
+(`true`/`false`) and `device` is the persisted config payload.
 
 #### `GET /devices/:id/config`
 
@@ -259,11 +270,7 @@ Round 2 (submit PIN):
 { "device_id": "<id>", "session_id": "<from round 1>", "pin": "1234" }
 ```
 
-### Static
+### Fixtures
 
-```
-GET  /static/<path>
-HEAD /static/<path>
-```
-Serves files from `--static-root` (default `./static`). Used for the
-fixture streams (`/static/sample/wildlife/streams.json`, etc.).
+Static sample files under `static/` are test fixtures and are no longer
+served by runtime FreeTube endpoints.

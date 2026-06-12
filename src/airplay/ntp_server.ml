@@ -3,7 +3,10 @@ open Util
 
 module Log = (val Log_src.src_log ~doc:"AirPlay NTP timing server" Stdlib.__MODULE__)
 
-type t = { port : int }
+type t = {
+  port : int;
+  start_fiber : unit -> unit;
+}
 
 let port t = t.port
 
@@ -46,9 +49,14 @@ let serve ~clock socket =
   in
   loop ()
 
-let start ~sw ~net ~clock ~port =
+let init ~sw ~net ~clock ~port =
   let addr = `Udp (Eio.Net.Ipaddr.V6.any, port) in
   let socket = Eio.Net.datagram_socket ~sw ~reuse_addr:true net addr in
-  Log.info (fun m -> m "NTP timing server listening on UDP %d" port);
-  Eio.Fiber.fork ~sw (fun () -> serve ~clock socket);
-  { port }
+  let start_fiber () =
+    Log.info (fun m -> m "NTP timing server listening on UDP %d" port);
+    Eio.Fiber.fork ~sw (fun () -> serve ~clock socket)
+  in
+  { port; start_fiber }
+
+let start t =
+  t.start_fiber ()

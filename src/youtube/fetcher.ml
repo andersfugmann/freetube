@@ -24,8 +24,9 @@ let of_yt_dlp ~env ~cookies ~video_id : t =
   let write_cookies fd =
     let cookiejar = Api.Cookies.to_netscape cookies in
     let len = String.length cookiejar in
-    Unix.write_substring fd cookiejar 0 len |> ignore;
-    Unix.lseek fd 0 Unix.SEEK_SET |> ignore;
+    Eio_unix.run_in_systhread (fun () ->
+      Unix.write_substring fd cookiejar 0 len |> ignore;
+      Unix.lseek fd 0 Unix.SEEK_SET |> ignore);
     len
   in
   let cookie_fd, cookie_path = create_memfd ~name:"freetube-cookies" in

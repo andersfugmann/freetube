@@ -23,40 +23,41 @@ let default_video_codecs : Codec.Video.t list =
 let default_audio_codecs : Codec.Audio.t list =
   [ Opus; Aac; Flac ]
 
-let respond_string = Json_io.respond_string
-let respond_json = Json_io.respond_json
+let respond_string body =
+  Response.ok body
 
-let sink_error_status (e : Sink.error) : Piaf.Status.t =
+let respond_json payload =
+  Response.ok ~content_type:(Explicit "application/json")
+    (Yojson.Safe.to_string payload)
+
+let sink_error_error (e : Sink.error) =
   match e with
-  | Not_controllable -> `Conflict
-  | Airplay_error (Auth_failed _) -> `Unauthorized
-  | Airplay_error _ | Dlna_error _ -> `Bad_gateway
+  | Not_controllable -> `Conflict "sink not controllable"
+  | Airplay_error (Auth_failed _) -> `Unauthorized (Sink.error_to_string e)
+  | Airplay_error _ | Dlna_error _ -> `Upstream_error (Sink.error_to_string e)
 
-let producer_status (e : Stream.Producer.Error.t) : Piaf.Status.t =
-  match e with
-  | Source_unavailable _ -> `Bad_gateway
-  | Parse_error _        -> `Bad_gateway
-  | Codec_unsupported _  -> `Unsupported_media_type
-  | Aborted              -> `Service_unavailable
-
-let host_of_request ~(app : _ App.t) ~client_address request =
-  match Piaf.Headers.get request.Piaf.Request.headers "host" with
-  | Some h when not (String.is_empty h) ->
+let host_of_request ~(app : _ App.t) request =
+  match request.Request.host with
+  | Host h when not (String.is_empty h) ->
       (match String.lsplit2 h ~on:':' with
        | Some (host, _) -> host, app.port
        | None -> h, app.port)
-  | _ ->
-      let host = Local_ip.for_peer client_address in
-      let host_str =
-        Eio.Net.Ipaddr.fold host
-          ~v4:(fun _ -> Stdlib.Format.asprintf "%a" Eio.Net.Ipaddr.pp host)
-          ~v6:(fun _ -> Stdlib.Format.asprintf "[%a]" Eio.Net.Ipaddr.pp host)
-      in
-      host_str, app.port
+  | Host _ -> "127.0.0.1", app.port
+  | No_host ->
+      (match request.client with
+       | Unknown_client -> "127.0.0.1", app.port
+       | Peer client_address ->
+           let host = Local_ip.for_peer ~net:(Eio.Stdenv.net app.env) client_address in
+           let host_str =
+             Eio.Net.Ipaddr.fold host
+               ~v4:(fun _ -> Stdlib.Format.asprintf "%a" Eio.Net.Ipaddr.pp host)
+               ~v6:(fun _ -> Stdlib.Format.asprintf "[%a]" Eio.Net.Ipaddr.pp host)
+           in
+           host_str, app.port)
 
-let manifest_url_for ~(app : _ App.t) ~client_address ~session_id ~request
+let manifest_url_for ~(app : _ App.t) ~session_id ~request
       ~stream_format =
-  let host, port = host_of_request ~app ~client_address request in
+  let host, port = host_of_request ~app request in
   match stream_format with
   | Api.Stream_format.Hls  -> Printf.sprintf "http://%s:%d/sessions/%s/master.m3u8" host port session_id
   | Dash -> Printf.sprintf "http://%s:%d/sessions/%s/dash.mpd" host port session_id
@@ -79,24 +80,28 @@ let summary_of ~clock session =
     };
   }
 
-let content_url_for ~peer_address ~peer_port ~server_port ~filename =
+let content_url_for ~net ~peer_address ~peer_port ~server_port ~filename =
   match String.is_prefix filename ~prefix:"http://"
         || String.is_prefix filename ~prefix:"https://" with
   | true -> filename
   | false ->
-      let local_ip = Local_ip.for_address ~address:peer_address ~port:peer_port in
+      let local_ip =
+        Local_ip.for_address ~net ~address:peer_address ~port:peer_port
+      in
       Printf.sprintf "http://%s:%d/%s" local_ip server_port filename
 
 let content_url_for_entry ~(app : _ App.t) ~filename (entry : Device.t) =
+  let net = Eio.Stdenv.net app.env in
   match entry.client with
   | Device.Client.Airplay a ->
-      content_url_for ~peer_address:a.address ~peer_port:a.port
+      content_url_for ~net ~peer_address:a.address ~peer_port:a.port
         ~server_port:app.port ~filename
   | Dlna d ->
       let uri = Uri.of_string d.control_url in
       let peer_address = Uri.host uri |> Option.value ~default:d.address in
       let peer_port = Uri.port uri |> Option.value ~default:80 in
-      content_url_for ~peer_address ~peer_port ~server_port:app.port ~filename
+      content_url_for ~net ~peer_address ~peer_port ~server_port:app.port
+        ~filename
   | Url -> failwith "content_url_for_entry: Url device has no peer"
 
 (* Construct a sink for a given device entry. Returns the sink and a
@@ -132,18 +137,21 @@ let sink_label session =
   | `Url     -> "URL"
 
 let with_session_body ~action ~(app : _ App.t) request f =
-  let body = Json_io.parse_body ~context:action id_request_of_yojson request in
+  let ( let* ) result f = Result.bind result ~f in
+  let* body = Json_io.parse_body ~context:action id_request_of_yojson request in
   match Sessions.find app.sessions ~id:body.session_id with
-  | None ->
-      Json_io.raise_http `Not_found
-        (Printf.sprintf "%s: session %s not found" action body.session_id)
+  | None -> Error `Not_found
   | Some session ->
       let context = Printf.sprintf "%s %s" (sink_label session) action in
       match f session with
-      | Ok () -> respond_string ~status:`OK "OK"
+      | Ok () -> Ok (respond_string "OK")
       | Error e ->
-          respond_string ~status:(sink_error_status e)
-            (Printf.sprintf "%s: %s" context (Sink.error_to_string e))
+          let msg = Printf.sprintf "%s: %s" context (Sink.error_to_string e) in
+          (match sink_error_error e with
+           | `Conflict _ -> Error (`Conflict msg)
+           | `Unauthorized _ -> Error (`Unauthorized msg)
+           | `Upstream_error _ -> Error (`Upstream_error msg)
+           | _ -> Error (`Internal_error msg))
 
 let handle_pause ~(app : _ App.t) request =
   with_session_body ~action:"pause" ~app request (fun s ->
@@ -154,25 +162,29 @@ let handle_resume ~(app : _ App.t) request =
     Sink.resume (Session.sink s))
 
 let handle_seek ~(app : _ App.t) request =
-  let body = Json_io.parse_body ~context:"Seek" seek_request_of_yojson request in
+  let ( let* ) result f = Result.bind result ~f in
+  let* body = Json_io.parse_body ~context:"Seek" seek_request_of_yojson request in
   match Sessions.find app.sessions ~id:body.session_id with
-  | None ->
-      Json_io.raise_http `Not_found
-        (Printf.sprintf "Seek: session %s not found" body.session_id)
+  | None -> Error `Not_found
   | Some session ->
       let context = Printf.sprintf "%s seek" (sink_label session) in
       match Sink.seek (Session.sink session) ~seconds:body.seconds with
-      | Ok () -> respond_string ~status:`OK "OK"
+      | Ok () -> Ok (respond_string "OK")
       | Error e ->
-          respond_string ~status:(sink_error_status e)
-            (Printf.sprintf "%s: %s" context (Sink.error_to_string e))
+          let msg = Printf.sprintf "%s: %s" context (Sink.error_to_string e) in
+          (match sink_error_error e with
+           | `Conflict _ -> Error (`Conflict msg)
+           | `Unauthorized _ -> Error (`Unauthorized msg)
+           | `Upstream_error _ -> Error (`Upstream_error msg)
+           | _ -> Error (`Internal_error msg))
 
 let handle_close ~(app : _ App.t) request =
-  let body = Json_io.parse_body ~context:"Close session" id_request_of_yojson request in
+  let ( let* ) result f = Result.bind result ~f in
+  let* body = Json_io.parse_body ~context:"Close session" id_request_of_yojson request in
   (match Sessions.find app.sessions ~id:body.session_id with
    | Some session -> Session.stop session
    | None -> ());
-  respond_string ~status:`OK "OK"
+  Ok (respond_string "OK")
 
 let handle_player_page ~(app : _ App.t) =
   let sessions = Sessions.list app.sessions in
@@ -189,8 +201,7 @@ let handle_player_page ~(app : _ App.t) =
     "<!DOCTYPE html><html><head><title>FreeTube streams</title></head>\
      <body><h1>Active streams</h1><ul>%s</ul></body></html>" links
   in
-  let headers = Piaf.Headers.of_list [ "content-type", "text/html" ] in
-  Piaf.Response.of_string ~headers ~body `OK
+  Ok (Response.ok ~content_type:(Explicit "text/html") body)
 
 let handle_list ~(app : _ App.t) =
   let clock = Eio.Stdenv.clock app.env in
@@ -200,60 +211,41 @@ let handle_list ~(app : _ App.t) =
           List.map (Sessions.list app.sessions)
             ~f:(summary_of ~clock) }
   in
-  respond_json ~status:`OK payload
+  Ok (respond_json payload)
 
 (* ── New REST endpoints under /sessions/<id> ───────────────────── *)
 
 let handle_get_session ~(app : _ App.t) ~id =
   match Sessions.find app.sessions ~id with
-  | None -> respond_string ~status:`Not_found (Printf.sprintf "Session %s not found" id)
+  | None -> Error `Not_found
   | Some session ->
       let clock = Eio.Stdenv.clock app.env in
-      respond_json ~status:`OK
-        (session_summary_to_yojson (summary_of ~clock session))
+      Ok (respond_json (session_summary_to_yojson (summary_of ~clock session)))
 
 let respond_playlist ~body =
-  let headers =
-    Piaf.Headers.of_list
-      [ "content-type", "application/vnd.apple.mpegurl";
-        "cache-control", "no-store";
-        "content-length", Int.to_string (String.length body);
+  Response.ok ~content_type:(Explicit "application/vnd.apple.mpegurl")
+    ~headers:
+      [ "cache-control", "no-store";
         "transferMode.dlna.org", "Streaming" ]
-  in
-  Piaf.Response.of_string ~headers ~body `OK
+    body
 
-let respond_media ~content_type ~body ~accept_ranges (request : Piaf.Request.t) =
-  let total = String.length body in
-  let range_header = Piaf.Headers.get (Piaf.Request.headers request) "range" in
-  let parsed_range =
-    match accept_ranges, range_header with
-    | true, Some header -> Static.parse_range header ~total
-    | _ -> None
+let respond_media ~content_type ~body ~accept_ranges =
+  let accept_ranges =
+    match accept_ranges with
+    | true -> Response.Allow_ranges
+    | false -> Response.No_ranges
   in
-  match accept_ranges, range_header, parsed_range with
-  | true, Some _, None when total > 0 ->
-    Static.respond_range_not_satisfiable ~total
-  | _ ->
-    let offset, length, status =
-      match parsed_range with
-      | None -> 0, total, `OK
-      | Some r -> r.start, r.length, `Partial_content
-    in
-    let range = parsed_range in
-    let headers = Static.response_headers ~content_type ~length ~range ~total in
-    let body = String.sub body ~pos:offset ~len:length in
-    Piaf.Response.of_string ~headers ~body status
+  Response.ok ~content_type:(Explicit content_type) ~accept_ranges body
 
-let handle_session_request ~(app : _ App.t) ~id ~sub_path (request : Piaf.Request.t) =
+let handle_session_request ~(app : _ App.t) ~id ~sub_path (_request : Request.t) =
   match Sessions.find app.sessions ~id with
-  | None -> respond_string ~status:`Not_found (Printf.sprintf "Session %s not found" id)
+  | None -> Error `Not_found
   | Some session ->
     let path_str = Routes.Parts.wildcard_match sub_path in
     match String.is_empty path_str with
     | true ->
       let clock = Eio.Stdenv.clock app.env in
-      respond_json ~status:`OK
-        (session_summary_to_yojson (summary_of ~clock session))
+      Ok (respond_json (session_summary_to_yojson (summary_of ~clock session)))
     | false ->
       Session.touch session;
       let path =
@@ -262,36 +254,39 @@ let handle_session_request ~(app : _ App.t) ~id ~sub_path (request : Piaf.Reques
       in
       match Session.handle_request session ~path with
       | Ok { content_type; body; accept_ranges } ->
-        respond_media ~content_type ~body ~accept_ranges request
-      | Error Not_found -> respond_string ~status:`Not_found "not found"
-      | Error No_stream -> respond_string ~status:`Conflict "no stream source"
-      | Error (Unavailable msg) -> respond_string ~status:`Bad_gateway msg
+        Ok (respond_media ~content_type ~body ~accept_ranges)
+      | Error Not_found -> Error `Not_found
+      | Error No_stream -> Error (`Conflict "no stream source")
+      | Error (Unavailable msg) -> Error (`Upstream_error msg)
 
 let handle_delete_session ~(app : _ App.t) ~id =
   match Sessions.find app.sessions ~id with
-  | None -> respond_string ~status:`No_content ""
+  | None -> Ok (Response.no_content ())
   | Some session ->
       Session.stop session;
-      respond_string ~status:`No_content ""
+      Ok (Response.no_content ())
 
 let with_controllable_sink ~(app : _ App.t) ~id ~action f =
   match Sessions.find app.sessions ~id with
-  | None ->
-      respond_string ~status:`Not_found
-        (Printf.sprintf "%s: session %s not found" action id)
+  | None -> Error `Not_found
   | Some session ->
       let sink = Session.sink session in
       match Sink.controllable sink with
       | false ->
-          respond_string ~status:`Conflict
-            (Printf.sprintf "%s: sink not controllable" action)
+          Error (`Conflict (Printf.sprintf "%s: sink not controllable" action))
       | true ->
           match f sink with
-          | Ok () -> respond_string ~status:`OK "OK"
+          | Ok () -> Ok (respond_string "OK")
           | Error e ->
-              respond_string ~status:(sink_error_status e)
-                (Printf.sprintf "%s %s: %s" (sink_label session) action
-                   (Sink.error_to_string e))
+              let msg =
+                Printf.sprintf "%s %s: %s" (sink_label session) action
+                  (Sink.error_to_string e)
+              in
+              (match sink_error_error e with
+               | `Conflict _ -> Error (`Conflict msg)
+               | `Unauthorized _ -> Error (`Unauthorized msg)
+               | `Upstream_error _ -> Error (`Upstream_error msg)
+               | _ -> Error (`Internal_error msg))
 
 let handle_post_pause ~(app : _ App.t) ~id =
   with_controllable_sink ~app ~id ~action:"pause" Sink.pause
@@ -300,30 +295,38 @@ let handle_post_resume ~(app : _ App.t) ~id =
   with_controllable_sink ~app ~id ~action:"resume" Sink.resume
 
 let handle_post_seek ~(app : _ App.t) ~id request =
-  let body = Json_io.parse_body ~context:"Seek" seek_path_request_of_yojson request in
+  let ( let* ) result f = Result.bind result ~f in
+  let* body = Json_io.parse_body ~context:"Seek" seek_path_request_of_yojson request in
   with_controllable_sink ~app ~id ~action:"seek" (fun sink ->
-    Sink.seek sink ~seconds:body.seconds)
+      Sink.seek sink ~seconds:body.seconds)
 
 (* ── POST /sessions (create) ───────────────────────────────────── *)
 
 let video_codec_of_string s =
   match String.lowercase s with
-  | "av1"  -> Codec.Video.Av1
-  | "hevc" -> Codec.Video.Hevc
-  | "vp9"  -> Codec.Video.Vp9
-  | "avc"  -> Codec.Video.Avc
-  | _ -> Json_io.raise_http `Bad_request (Printf.sprintf "unknown video codec: %s" s)
+  | "av1"  -> Ok Codec.Video.Av1
+  | "hevc" -> Ok Codec.Video.Hevc
+  | "vp9"  -> Ok Codec.Video.Vp9
+  | "avc"  -> Ok Codec.Video.Avc
+  | _ -> Error (`Bad_param (Printf.sprintf "unknown video codec: %s" s))
 
 let audio_codec_of_string s =
   match String.lowercase s with
-  | "opus" -> Codec.Audio.Opus
-  | "aac"  -> Codec.Audio.Aac
-  | "flac" -> Codec.Audio.Flac
-  | "vorbis" -> Codec.Audio.Vorbis
-  | _ -> Json_io.raise_http `Bad_request (Printf.sprintf "unknown audio codec: %s" s)
+  | "opus" -> Ok Codec.Audio.Opus
+  | "aac"  -> Ok Codec.Audio.Aac
+  | "flac" -> Ok Codec.Audio.Flac
+  | "vorbis" -> Ok Codec.Audio.Vorbis
+  | _ -> Error (`Bad_param (Printf.sprintf "unknown audio codec: %s" s))
 
 let parse_codec_list decode strs =
-  List.map strs ~f:decode
+  let ( let* ) result f = Result.bind result ~f in
+  let rec loop acc = function
+    | [] -> Ok (List.rev acc)
+    | x :: xs ->
+        let* value = decode x in
+        loop (value :: acc) xs
+  in
+  loop [] strs
 
 let device_codecs (entry : Device.t) =
   entry.video_codecs, entry.audio_codecs
@@ -337,42 +340,43 @@ let effective_codecs ~entry ~vcodecs ~acodecs =
   let video =
     match vcodecs with
     | Some xs -> parse_codec_list video_codec_of_string xs
-    | None -> Option.value device_v ~default:default_video_codecs
+    | None -> Ok (Option.value device_v ~default:default_video_codecs)
   in
   let audio =
     match acodecs with
     | Some xs -> parse_codec_list audio_codec_of_string xs
-    | None -> Option.value device_a ~default:default_audio_codecs
+    | None -> Ok (Option.value device_a ~default:default_audio_codecs)
   in
-  video, audio
+  match video, audio with
+  | Ok v, Ok a -> Ok (v, a)
+  | Error err, _ -> Error err
+  | _, Error err -> Error err
 
-let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
+let handle_create_body ~(app : _ App.t) ~env ~clock
       ~session_id request =
-  let body = Json_io.parse_body ~context:"Create session" create_request_of_yojson request in
-  let entry =
+  let ( let* ) result f = Result.bind result ~f in
+  let* body = Json_io.parse_body ~context:"Create session" create_request_of_yojson request in
+  let* entry =
     match body.sink with
-    | None -> None
+    | None -> Ok None
     | Some device_id ->
         match Device_store.find app.device_store ~id:device_id with
-        | Some e -> Some e
-        | None ->
-            Json_io.raise_http `Not_found
-              (Printf.sprintf "Create session: device %s not found" device_id)
+        | Some e -> Ok (Some e)
+        | None -> Error `Not_found
   in
-  (match body.source, entry with
-   | Url _, None ->
-       Json_io.raise_http `Bad_request "Create session: source 'url' requires a sink device"
-   | _ -> ());
-  let video_codecs, audio_codecs =
+  let* () =
+    match body.source, entry with
+    | Url _, None -> Error (`Bad_param "Create session: source 'url' requires a sink device")
+    | _ -> Ok ()
+  in
+  let* video_codecs, audio_codecs =
     effective_codecs ~entry ~vcodecs:body.vcodecs ~acodecs:body.acodecs
   in
   let stream_format =
-    match body.stream_format with
-    | Some f -> f
-    | None ->
-      match entry with
-      | Some e -> e.stream_format
-      | None -> Api.Stream_format.Hls
+    match body.stream_format, entry with
+    | Some f, _ -> f
+    | None, Some e -> e.stream_format
+    | None, None -> Api.Stream_format.Hls
   in
   let transcode =
     let transcode =
@@ -415,32 +419,32 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
     match body.source with
     | Url uri -> Uri.to_string uri
     | Youtube_id _ | Youtube_file _ ->
-      manifest_url_for ~app ~client_address ~session_id ~request ~stream_format
+        manifest_url_for ~app ~session_id ~request ~stream_format
   in
-  (match entry with
-   | Some { client = Device.Client.Airplay client; _ } ->
-     (match Sink.probe_airplay ~env ~client with
-      | Ok () -> ()
-      | Error `No_credentials ->
-        Json_io.raise_http `Unauthorized
-          (Printf.sprintf "No stored AirPlay credentials for %s (pair first)"
-             (Airplay.Client.friendly_name client))
-      | Error (`Invalid_credentials msg) ->
-        Json_io.raise_http `Unauthorized msg
-      | Error (`Unavailable msg) ->
-        Json_io.raise_http `Bad_gateway msg)
-   | _ -> ());
+  let* () =
+    match entry with
+    | Some { client = Device.Client.Airplay client; _ } ->
+        (match Sink.probe_airplay ~env ~client with
+         | Ok () -> Ok ()
+         | Error `No_credentials ->
+             Error (`Unauthorized
+               (Printf.sprintf "No stored AirPlay credentials for %s (pair first)"
+                  (Airplay.Client.friendly_name client)))
+         | Error (`Invalid_credentials msg) -> Error (`Unauthorized msg)
+         | Error (`Unavailable msg) -> Error (`Upstream_error msg))
+    | _ -> Ok ()
+  in
   let sink_factory =
     match entry with
     | None -> fun ~sw:_ ~content:_ -> Sink.Url_consumer
     | Some e ->
       let sink_filename =
-        match body.source with
-        | Url uri -> Uri.to_string uri
-        | Youtube_id _ | Youtube_file _ ->
-          match e.stream_format with
-          | Api.Stream_format.Hls  -> Printf.sprintf "sessions/%s/master.m3u8" session_id
-          | Dash -> Printf.sprintf "sessions/%s/dash.mpd" session_id
+        match body.source, e.stream_format with
+        | Url uri, _ -> Uri.to_string uri
+        | (Youtube_id _ | Youtube_file _), Api.Stream_format.Hls ->
+            Printf.sprintf "sessions/%s/master.m3u8" session_id
+        | (Youtube_id _ | Youtube_file _), Dash ->
+            Printf.sprintf "sessions/%s/dash.mpd" session_id
       in
       fun ~sw ~content ->
         let title, duration_seconds, resolution, is_live =
@@ -468,29 +472,30 @@ let handle_create_body ~(app : _ App.t) ~env ~clock ~client_address
   Eio.Fiber.fork ~sw:app.sw (fun () ->
     Session.run session
       ~on_terminate:(fun () -> Sessions.remove app.sessions ~id:session_id));
-  respond_json ~status:`OK
-    (create_response_to_yojson { session_id; url = user_master_url })
+  Ok (respond_json (create_response_to_yojson { session_id; url = user_master_url }))
 
-let handle_create ~(app : _ App.t) ~client_address request =
+let handle_create ~(app : _ App.t) request =
   let env = app.env in
   let clock = Eio.Stdenv.clock env in
   let session_id = Uuid.v4 () in
   match
-    handle_create_body ~app ~env ~clock ~client_address
+    handle_create_body ~app ~env ~clock
       ~session_id request
   with
   | response -> response
   | exception exn ->
       Sessions.remove app.sessions ~id:session_id;
-      raise exn
+      Error (`Internal_error (Exn.to_string exn))
 
 (* ── Tests ─────────────────────────────────────────────────────── *)
 
 let%expect_test "effective_codecs: defaults when nothing supplied" =
-  let v, a = effective_codecs ~entry:None ~vcodecs:None ~acodecs:None in
-  Stdlib.Printf.printf "v=%s a=%s\n"
-    (String.concat ~sep:"," (List.map v ~f:Codec.Video.to_string))
-    (String.concat ~sep:"," (List.map a ~f:Codec.Audio.to_string));
+  (match effective_codecs ~entry:None ~vcodecs:None ~acodecs:None with
+   | Ok (v, a) ->
+       Stdlib.Printf.printf "v=%s a=%s\n"
+         (String.concat ~sep:"," (List.map v ~f:Codec.Video.to_string))
+         (String.concat ~sep:"," (List.map a ~f:Codec.Audio.to_string))
+   | Error (`Bad_param msg) -> Stdlib.print_endline msg);
   [%expect {| v=av1,hevc,vp9,avc a=opus,aac,flac |}]
 
 let%expect_test "effective_codecs: device when no override" =
@@ -499,7 +504,6 @@ let%expect_test "effective_codecs: device when no override" =
     stream_format = Api.Stream_format.Hls;
     transcode = false;
     max_width = 3840; max_height = 2160;
-    last_seen = 0.;
     video_codecs = [ Codec.Video.Avc ];
     audio_codecs = [ Codec.Audio.Aac ];
     client = Airplay {
@@ -508,10 +512,12 @@ let%expect_test "effective_codecs: device when no override" =
       features = None; flags = None; model = None; txt = [];
     }
   } in
-  let v, a = effective_codecs ~entry:(Some entry) ~vcodecs:None ~acodecs:None in
-  Stdlib.Printf.printf "v=%s a=%s\n"
-    (String.concat ~sep:"," (List.map v ~f:Codec.Video.to_string))
-    (String.concat ~sep:"," (List.map a ~f:Codec.Audio.to_string));
+  (match effective_codecs ~entry:(Some entry) ~vcodecs:None ~acodecs:None with
+   | Ok (v, a) ->
+       Stdlib.Printf.printf "v=%s a=%s\n"
+         (String.concat ~sep:"," (List.map v ~f:Codec.Video.to_string))
+         (String.concat ~sep:"," (List.map a ~f:Codec.Audio.to_string))
+   | Error (`Bad_param msg) -> Stdlib.print_endline msg);
   [%expect {| v=avc a=aac |}]
 
 let%expect_test "effective_codecs: request overrides device" =
@@ -520,7 +526,6 @@ let%expect_test "effective_codecs: request overrides device" =
     stream_format = Api.Stream_format.Hls;
     transcode = false;
     max_width = 3840; max_height = 2160;
-    last_seen = 0.;
     video_codecs = [ Codec.Video.Avc ];
     audio_codecs = [ Codec.Audio.Aac ];
     client = Airplay {
@@ -529,18 +534,18 @@ let%expect_test "effective_codecs: request overrides device" =
       features = None; flags = None; model = None; txt = [];
     }
   } in
-  let v, a =
-    effective_codecs ~entry:(Some entry)
-      ~vcodecs:(Some ["hevc"]) ~acodecs:None
-  in
-  Stdlib.Printf.printf "v=%s a=%s\n"
-    (String.concat ~sep:"," (List.map v ~f:Codec.Video.to_string))
-    (String.concat ~sep:"," (List.map a ~f:Codec.Audio.to_string));
+  (match effective_codecs ~entry:(Some entry)
+           ~vcodecs:(Some ["hevc"]) ~acodecs:None with
+   | Ok (v, a) ->
+       Stdlib.Printf.printf "v=%s a=%s\n"
+         (String.concat ~sep:"," (List.map v ~f:Codec.Video.to_string))
+         (String.concat ~sep:"," (List.map a ~f:Codec.Audio.to_string))
+   | Error (`Bad_param msg) -> Stdlib.print_endline msg);
   [%expect {| v=hevc a=aac |}]
 
 let%expect_test "effective_codecs: rejects unknown codec" =
   (match effective_codecs ~entry:None
            ~vcodecs:(Some ["bogus"]) ~acodecs:None with
-   | _ -> Stdlib.print_endline "ok?"
-   | exception Json_io.Http_error (_, e) -> Stdlib.print_endline e);
+   | Ok _ -> Stdlib.print_endline "ok?"
+   | Error (`Bad_param e) -> Stdlib.print_endline e);
   [%expect {| unknown video codec: bogus |}]
