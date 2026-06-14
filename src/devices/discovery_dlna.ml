@@ -22,7 +22,7 @@ let log_removed (e : Device.t) =
           (Dlna.Client.friendly_name c) (Dlna.Client.address c))
   | _ -> ()
 
-let device_of_client (client : Dlna.Client.t) =
+let device_of_client client =
   let vendor = Vendor.of_dlna ~manufacturer:(Dlna.Client.manufacturer client) in
   Device.of_dlna ~video_codecs:(Vendor.default_video_codecs vendor)
     ~audio_codecs:(Vendor.default_audio_codecs vendor)

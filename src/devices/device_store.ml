@@ -36,7 +36,7 @@ let load_file ~fs path =
 type entry = Device.discovered
 type t = entry list ref
 
-let create ~fs () : t =
+let create ~fs () =
   let dir = dir () in
   let entries =
     match Eio.Path.is_directory Eio.Path.(fs / dir) with
@@ -56,20 +56,20 @@ let all_devices t =
 
 let find t ~id =
   List.find_map !t ~f:(fun entry ->
-    let (device : Device.t) = Device.entry_device entry in
+    let device : Device.t = Device.entry_device entry in
     match String.equal device.id id with
     | true -> Some device
     | false -> None)
 
 let find_entry t ~id =
   List.find !t ~f:(fun entry ->
-    let (device : Device.t) = Device.entry_device entry in
+    let device : Device.t = Device.entry_device entry in
     String.equal device.id id)
 
 let set_available t ~id ~available =
   t :=
     List.map !t ~f:(fun entry ->
-      let (device : Device.t) = Device.entry_device entry in
+      let device : Device.t = Device.entry_device entry in
       match String.equal device.id id with
       | true -> device, available
       | false -> entry)
@@ -90,7 +90,7 @@ let save ~fs t (device : Device.t) =
     | None -> false
   in
   t := (device, available) :: List.filter !t ~f:(fun entry ->
-    let (existing : Device.t) = Device.entry_device entry in
+    let existing : Device.t = Device.entry_device entry in
     not (String.equal existing.id device.id))
 
 let remove ~fs t ~id =
@@ -104,5 +104,5 @@ let remove ~fs t ~id =
               m "Failed to remove %s: %s" path (Exn.to_string exn)))
    | false -> ());
   t := List.filter !t ~f:(fun entry ->
-    let (device : Device.t) = Device.entry_device entry in
+    let device : Device.t = Device.entry_device entry in
     not (String.equal device.id id))

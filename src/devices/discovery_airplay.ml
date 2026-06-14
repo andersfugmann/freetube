@@ -26,7 +26,7 @@ let log_removed (e : Device.t) =
           (Airplay.Client.address c) (Airplay.Client.port c))
   | _ -> ()
 
-let device_of_client (client : Airplay.Client.t) =
+let device_of_client client =
   let txt = Airplay.Client.txt client in
   let _, vendor = Vendor.of_airplay ~txt ~model:(Airplay.Client.model client) in
   Device.of_airplay ~video_codecs:(Vendor.default_video_codecs vendor)

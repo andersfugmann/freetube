@@ -22,7 +22,7 @@ let handle_pair_start_json ~(app : _ App.t) parsed =
   match
     Device_store.all app.device_store
     |> List.find ~f:(fun entry ->
-        let (e : Device.t) = Device.entry_device entry in
+       let (e : Device.t) = Device.entry_device entry in
         match e.client with
          | Airplay c -> String.equal c.pairing_id request.device_id
          | _ -> false)
