@@ -180,7 +180,7 @@ let scan_once ~net:_ ~clock:_ ~timeout =
     in
     Lwt_main.run (collect ()))
 
-let scan ~net ~clock ?(timeout = 5.0) () =
+let scan ~net ~clock ~timeout () =
   scan_once ~net ~clock ~timeout
 
 let map_of_clients clients =
@@ -190,7 +190,7 @@ let map_of_clients clients =
 let start t ~on_added ~on_removed =
   t.start_impl ~on_added ~on_removed
 
-let init ~env ?(timeout = 5.0) ~interval () =
+let init ~env ~timeout ~interval () =
   let net = Eio.Stdenv.net env in
   let clock = Eio.Stdenv.clock env in
   let initial_delay = Float.min 10.0 interval in

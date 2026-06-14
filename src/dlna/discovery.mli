@@ -4,7 +4,6 @@ type t
 
 val init :
   env:Eio_unix.Stdenv.base ->
-  ?timeout:float ->
   interval:float ->
   unit ->
   t

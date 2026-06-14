@@ -40,7 +40,7 @@ let full_box ~ty ~version ~flags payload =
   u8 b version; u24 b flags; bytes b payload;
   box ~ty (Buffer.contents b)
 
-let concat = String.concat ?sep:None
+let concat parts = String.concat ~sep:"" parts
 
 (* ---------- top-level boxes ---------- *)
 

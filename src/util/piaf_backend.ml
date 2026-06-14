@@ -24,7 +24,7 @@ let close t =
   Hashtbl.clear t.pool;
   List.iter ~f:close_client clients
 
-let init ?(max_conn_per_host=(Config.get ()).network.max_connections_per_host) ~sw ~env () =
+let init ~max_conn_per_host ~sw ~env () =
   let t =
     {
       env = (env :> Eio_unix.Stdenv.base);

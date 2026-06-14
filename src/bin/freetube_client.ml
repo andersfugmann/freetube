@@ -22,7 +22,11 @@ let post_json client ~server ~path body =
 let get_and_print ~server ~path =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let client = Http_client.init ~sw ~env () in
+  let client =
+    Http_client.init
+      ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+      ~sw ~env ()
+  in
   let uri = Uri.of_string (server ^ path) in
   let response = Http_client.get client ~ip_version:`V4 uri in
   match response.status with
@@ -67,7 +71,11 @@ let run_stream ~server ~source ~sink ~vcodecs ~acodecs ~format =
   in
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let client = Http_client.init ~sw ~env () in
+  let client =
+    Http_client.init
+      ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+      ~sw ~env ()
+  in
   match post_json client ~server ~path:"/sessions" (Yojson.Safe.from_string body) with
   | 200, body ->
       (match stream_response_of_yojson (Yojson.Safe.from_string body) with
@@ -86,7 +94,11 @@ let run_stream ~server ~source ~sink ~vcodecs ~acodecs ~format =
 let run_play_file ~server ~device_id ~filename =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let client = Http_client.init ~sw ~env () in
+  let client =
+    Http_client.init
+      ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+      ~sw ~env ()
+  in
   let req : Api.Session_api.create_request =
     { source = Url (Uri.of_string filename);
       sink = Some device_id;
@@ -112,7 +124,11 @@ let prompt_for_pin () =
 let run_airplay_pair ~server ~device_id =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let client = Http_client.init ~sw ~env () in
+  let client =
+    Http_client.init
+      ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+      ~sw ~env ()
+  in
   let start_request : Api.Airplay_pairing.pair_start_request = { device_id } in
   match
     post_json client ~server ~path:"/airplay/pair"

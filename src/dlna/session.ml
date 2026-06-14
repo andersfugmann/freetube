@@ -81,7 +81,7 @@ let current_track_uri ~client ~control_url =
    first definitive state. TRANSITIONING is not a confirmation of playback: a
    renderer may sit there while eagerly caching, so callers must wait for it to
    resolve to PLAYING (or another terminal state) before drawing a conclusion. *)
-let await_settled ?(attempts = 60) ~clock ~client ~control_url () =
+let await_settled ~attempts ~clock ~client ~control_url () =
   let rec loop attempts =
     match get_transport_state ~client ~control_url with
     | Some Av_transport.Transitioning when attempts > 0 ->
@@ -113,7 +113,7 @@ let send_play ~client ~control_url =
    buffering/playing), so we fire Play and accept playback regardless of the
    result. We still skip Play if the renderer already auto-played. *)
 let ensure_playing ~clock ~client ~control_url =
-  match await_settled ~clock ~client ~control_url () with
+  match await_settled ~attempts:60 ~clock ~client ~control_url () with
   | Some Av_transport.Playing ->
       Log.info (fun m -> m "renderer auto-played; skipping explicit Play");
       Ok ()
@@ -185,7 +185,11 @@ type t = {
 }
 
 let connect ~env ~sw ~client =
-  let http = Http_client.init ~sw ~env () in
+  let http =
+    Http_client.init
+      ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+      ~sw ~env ()
+  in
   let terminated_promise, terminated_resolver = Eio.Promise.create () in
   { http; control_url = Dlna.Client.control_url client;
     clock = Eio.Stdenv.clock env;

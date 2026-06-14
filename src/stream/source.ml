@@ -99,7 +99,11 @@ let all_video_codecs = Codec.Video.[ Av1; Hevc; Vp9; Avc ]
 let all_audio_codecs = Codec.Audio.[ Opus; Aac; Vorbis; Flac ]
 
 let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode youtube =
-  let client = Http_client.init ~sw ~env () in
+  let client =
+    Http_client.init
+      ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+      ~sw ~env ()
+  in
   let clock = Eio.Stdenv.clock env in
   let is_live = youtube.Youtube.video_info.is_live in
   let select_video_codecs = match transcode with

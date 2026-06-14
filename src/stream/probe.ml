@@ -22,7 +22,7 @@ let usec_of_ticks ~ticks ~timescale =
 
 let ( let* ) x f = Result.bind x ~f
 
-let rec probe_and_parse ~client ~url ?(headers = []) ~start ~size ~max_size parse =
+let rec probe_and_parse ~client ~url ~headers ~start ~size ~max_size parse =
   match size > max_size with
   | true -> Ok None
   | false ->

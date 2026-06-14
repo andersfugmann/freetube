@@ -35,11 +35,15 @@ let of_yt_dlp ~env ~cookies ~video_id : t =
     m "cookie memfd ready: video_id=%s cookies=%d path=%s bytes=%d"
       video_id (List.length cookies) cookie_path bytes);
   Stdlib.Gc.finalise (fun _ -> Unix.close cookie_fd) cookie_path;
-  fun () -> Extract.extract_json ~env ~cookie_path video_id
+  fun () -> Extract.extract_json ~timeout:10.0 ~env ~cookie_path video_id
 
 let of_url ~env ~sw uri : t =
   fun () ->
-    let client = Http_client.init ~sw ~env () in
+    let client =
+      Http_client.init
+        ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+        ~sw ~env ()
+    in
     let response = Http_client.get client ~ip_version:`V4 ~oneshot:true uri in
     match response.status with
     | 200 -> Yojson.Safe.from_string response.body

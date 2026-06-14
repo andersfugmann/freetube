@@ -43,7 +43,7 @@ let file_size_or_minus_one path =
     | Unix.Unix_error _ -> -1
     | Sys_error _ -> -1)
 
-let extract_json ?(timeout=10.0) ~env ~cookie_path video_id =
+let extract_json ~timeout ~env ~cookie_path video_id =
   let clock = Eio.Stdenv.clock env in
   let proc_mgr = Eio.Stdenv.process_mgr env in
   Eio.Time.with_timeout_exn clock timeout (fun () ->
@@ -71,7 +71,7 @@ let extract_json ?(timeout=10.0) ~env ~cookie_path video_id =
         failwith (status_message status stderr)
     )
 
-let extract ?timeout ~env ~cookie_path video_id =
-  extract_json ?timeout ~env ~cookie_path video_id
+let extract ~timeout ~env ~cookie_path video_id =
+  extract_json ~timeout ~env ~cookie_path video_id
   |> Video_info.of_yojson
   |> Result.ok_or_failwith

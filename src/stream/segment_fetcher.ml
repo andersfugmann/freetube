@@ -157,7 +157,7 @@ let close _ = ()
 type video_state = Producer.video state
 type audio_state = Producer.audio state
 
-let create_video ~clock ~client ~url ?(headers = []) ~is_live ~container ~codec ~dynamic_range ~rfc6381 ()
+let create_video ~clock ~client ~url ~headers ~is_live ~container ~codec ~dynamic_range ~rfc6381 ()
   : (module Producer.S with type kind = Producer.video) =
   (module struct
     type state = video_state
@@ -178,7 +178,7 @@ let create_video ~clock ~client ~url ?(headers = []) ~is_live ~container ~codec 
     let close = close
   end)
 
-let create_audio ~clock ~client ~url ?(headers = []) ~is_live ~container ~codec ~rfc6381 ()
+let create_audio ~clock ~client ~url ~headers ~is_live ~container ~codec ~rfc6381 ()
   : (module Producer.S with type kind = Producer.audio) =
   (module struct
     type state = audio_state

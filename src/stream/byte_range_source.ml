@@ -47,7 +47,7 @@ module Make (F : Format) = struct
   type video_state = Producer.video state
   type audio_state = Producer.audio state
 
-  let create_video ?(headers = []) ~clock ~client ~url ~codec ~dynamic_range ~rfc6381 ()
+  let create_video ~headers ~clock ~client ~url ~codec ~dynamic_range ~rfc6381 ()
     : (module Producer.S with type kind = Producer.video) =
     (module struct
       type state = video_state
@@ -106,7 +106,7 @@ module Make (F : Format) = struct
               data }
     end)
 
-  let create_audio ?(headers = []) ~clock ~client ~url ~codec ~rfc6381 ()
+  let create_audio ~headers ~clock ~client ~url ~codec ~rfc6381 ()
     : (module Producer.S with type kind = Producer.audio) =
     (module struct
       type state = audio_state

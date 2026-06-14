@@ -40,8 +40,7 @@ let fetch_description ~client location =
 let client_of_response ~client (response : Ssdp.search_response) =
   fetch_description ~client response.location
 
-let scan ~net ~clock ~client ?timeout () =
-  let timeout = Option.value timeout ~default:(Config.get ()).discovery.scan_timeout_seconds in
+let scan ~net ~clock ~client ~timeout () =
   Ssdp.discover ~net ~clock ~timeout
   |> List.filter_map ~f:(client_of_response ~client)
 
@@ -52,15 +51,19 @@ let map_of_clients clients =
 let start t ~on_added ~on_removed =
   t.start_impl ~on_added ~on_removed
 
-let init ~env ?(timeout : float option) ~interval () =
+let init ~env ~interval () =
   let net = Eio.Stdenv.net env in
   let clock = Eio.Stdenv.clock env in
   let timeout =
-    Option.value timeout ~default:(Config.get ()).discovery.scan_timeout_seconds
+    (Config.get ()).discovery.scan_timeout_seconds
   in
   let start_impl ~on_added ~on_removed =
     Eio.Switch.run @@ fun sw ->
-    let client = Http_client.init ~sw ~env () in
+    let client =
+      Http_client.init
+        ~max_conn_per_host:(Config.get ()).network.max_connections_per_host
+        ~sw ~env ()
+    in
     let known = ref (Map.empty (module String)) in
     let rec loop () =
       (match Result.try_with (fun () -> scan ~net ~clock ~client ~timeout ()) with
