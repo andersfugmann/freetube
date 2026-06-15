@@ -64,7 +64,7 @@ let update_head s (response : Http_client.response) =
 let do_head s =
   let uri = Uri.of_string s.url in
   let t0 = Eio.Time.now s.clock in
-  let response = Http_client.head s.client ~ip_version:`V6 ~headers:s.headers uri in
+  let response = Http_client.head s.client ~ip_version:(Config.get ()).network.ip_version ~headers:s.headers uri in
   let elapsed_ms = (Eio.Time.now s.clock -. t0) *. 1000.0 in
   Log.info (fun m -> m "HEAD %s status=%d time=%dms" s.url response.status (Float.to_int elapsed_ms));
   match response.status with
@@ -81,7 +81,7 @@ let ensure_head s =
 let fetch_raw s ~sq =
   let sq_url = Printf.sprintf "%s&sq=%d" s.url sq in
   let uri = Uri.of_string sq_url in
-  let response = Http_client.get s.client ~ip_version:`V6 ~headers:s.headers uri in
+  let response = Http_client.get s.client ~ip_version:(Config.get ()).network.ip_version ~headers:s.headers uri in
   update_head s response;
   match response.status with
   | 200 -> response.body
@@ -94,7 +94,7 @@ let fetch_raw s ~sq =
 
 let fetch_latest s =
   let uri = Uri.of_string s.url in
-  let response = Http_client.get s.client ~ip_version:`V6 ~headers:s.headers uri in
+  let response = Http_client.get s.client ~ip_version:(Config.get ()).network.ip_version ~headers:s.headers uri in
   update_head s response;
   match response.status with
   | 200 -> response.body

@@ -13,9 +13,8 @@ type streaming = {
 type network = {
   max_connections_per_host : int;
   max_redirects : int;
-  prefer_ip_version : ip_version;
+  ip_version : ip_version;
   file_chunk_size : int;
-  yt_dlp_force_ipv6 : bool;
 } [@@deriving yojson]
 
 type video = {
@@ -61,9 +60,8 @@ let default = {
   network = {
     max_connections_per_host = 2;
     max_redirects = 5;
-    prefer_ip_version = `V4;
+    ip_version = `V4;
     file_chunk_size = 65536;
-    yt_dlp_force_ipv6 = true;
   };
   video = {
     max_width = 3840;

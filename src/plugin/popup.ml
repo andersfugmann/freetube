@@ -461,13 +461,11 @@ let render_settings ~server ~back =
                ~value:(Int.to_string cfg.network.max_connections_per_host)
            ; number_field ~id:"n-redir" ~label:"Max redirects"
                ~value:(Int.to_string cfg.network.max_redirects)
-           ; select_field ~id:"n-ip" ~label:"Preferred IP version"
+           ; select_field ~id:"n-ip" ~label:"IP version"
                ~options:[("v4", "IPv4"); ("v6", "IPv6")]
-               ~selected:(ip_version_string cfg.network.prefer_ip_version)
+               ~selected:(ip_version_string cfg.network.ip_version)
            ; number_field ~id:"n-chunk" ~label:"File chunk size (bytes)"
                ~value:(Int.to_string cfg.network.file_chunk_size)
-           ; checkbox_field ~id:"n-ipv6" ~label:"Force IPv6 for yt-dlp"
-               ~checked:cfg.network.yt_dlp_force_ipv6
            ; "</div>"
            ; "<div class=\"section\"><div class=\"section-title\">Video</div>"
            ; number_field ~id:"v-width" ~label:"Max width"
@@ -520,9 +518,8 @@ let render_settings ~server ~back =
           network = {
             max_connections_per_host = int_or "n-conn" cfg.network.max_connections_per_host;
             max_redirects = int_or "n-redir" cfg.network.max_redirects;
-            prefer_ip_version = ip_version_of_string (Option.value (get_select "n-ip") ~default:"v4");
+            ip_version = ip_version_of_string (Option.value (get_select "n-ip") ~default:"v4");
             file_chunk_size = int_or "n-chunk" cfg.network.file_chunk_size;
-            yt_dlp_force_ipv6 = get_checked "n-ipv6";
           };
           video = {
             max_width = int_or "v-width" cfg.video.max_width;

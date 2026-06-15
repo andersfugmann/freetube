@@ -10,9 +10,9 @@ let read_all flow =
 
 let argv ~cookie_path video_id =
   let ip_flag =
-    match (Config.get ()).network.yt_dlp_force_ipv6 with
-    | true -> ["--force-ipv6"]
-    | false -> []
+    match (Config.get ()).network.ip_version with
+    | `V6 -> ["--force-ipv6"]
+    | `V4 -> ["--force-ipv4"]
   in
   ["/usr/bin/yt-dlp"]
   @ ip_flag

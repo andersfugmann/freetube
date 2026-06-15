@@ -90,9 +90,8 @@ Configuration can be edited via the browser extension settings panel or the
 |-------|------|---------|-------------|
 | `network.max_connections_per_host` | int | `2` | Concurrent connections per upstream host |
 | `network.max_redirects` | int | `5` | Maximum HTTP redirects to follow |
-| `network.prefer_ip_version` | `"v4"`\|`"v6"` | `"v4"` | Preferred IP version for outbound connections |
+| `network.ip_version` | `"v4"`\|`"v6"` | `"v4"` | IP version for yt-dlp and all upstream video fetches (kept consistent so signed URLs stay valid) |
 | `network.file_chunk_size` | int | `65536` | Read chunk size for file I/O |
-| `network.yt_dlp_force_ipv6` | bool | `true` | Force IPv6 when calling yt-dlp |
 
 ### Video
 

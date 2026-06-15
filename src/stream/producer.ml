@@ -96,6 +96,11 @@ module Error = struct
     | Codec_unsupported s -> Printf.sprintf "codec_unsupported: %s" s
     | Aborted -> "aborted"
 
+  let () =
+    Stdlib.Printexc.register_printer (function
+      | E t -> Some (to_string t)
+      | _ -> None)
+
   let raise_error t = Stdlib.raise (E t)
 
   let unwrap = function

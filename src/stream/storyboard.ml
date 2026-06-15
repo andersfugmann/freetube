@@ -45,7 +45,7 @@ let index_fmp4 output =
 
 let fetch_sprite client url =
   let uri = Uri.of_string url in
-  let resp = Http_client.get client ~ip_version:`V6 uri in
+  let resp = Http_client.get client ~ip_version:(Config.get ()).network.ip_version uri in
   resp.body
 
 let init ~env ~sw ~client ~(storyboard : Youtube.Video_info.Storyboard.t) =
