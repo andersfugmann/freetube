@@ -80,8 +80,8 @@ Configuration can be edited via the browser extension settings panel or the
 |-------|------|---------|-------------|
 | `streaming.prefetch_count` | int | `3` | Number of segments to prefetch ahead |
 | `streaming.cache_capacity` | int | `6` | Max segments kept in memory cache |
-| `streaming.segment_stale_threshold_seconds` | float | `10.0` | Seconds before a segment is considered stale |
 | `streaming.live_window_seconds` | int | `10800` | Live stream DVR window (3 hours) |
+| `streaming.live_edge_segments` | int | `6` | Video segments to stay behind the live edge |
 | `streaming.default_segment_duration_us` | int | `5000000` | Default segment duration in microseconds |
 
 ### Network

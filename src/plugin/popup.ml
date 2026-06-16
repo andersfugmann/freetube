@@ -451,10 +451,10 @@ let render_settings ~server ~back =
                ~value:(Int.to_string cfg.streaming.prefetch_count)
            ; number_field ~id:"s-cache" ~label:"Cache capacity"
                ~value:(Int.to_string cfg.streaming.cache_capacity)
-           ; number_field ~id:"s-stale" ~label:"Stale threshold (sec)"
-               ~value:(Printf.sprintf "%.1f" cfg.streaming.segment_stale_threshold_seconds)
            ; number_field ~id:"s-window" ~label:"Live window (sec)"
                ~value:(Int.to_string cfg.streaming.live_window_seconds)
+           ; number_field ~id:"s-live-edge" ~label:"Live edge (segments)"
+               ~value:(Int.to_string cfg.streaming.live_edge_segments)
            ; "</div>"
            ; "<div class=\"section\"><div class=\"section-title\">Network</div>"
            ; number_field ~id:"n-conn" ~label:"Max connections per host"
@@ -511,8 +511,8 @@ let render_settings ~server ~back =
           streaming = {
             prefetch_count = int_or "s-prefetch" cfg.streaming.prefetch_count;
             cache_capacity = int_or "s-cache" cfg.streaming.cache_capacity;
-            segment_stale_threshold_seconds = float_or "s-stale" cfg.streaming.segment_stale_threshold_seconds;
             live_window_seconds = int_or "s-window" cfg.streaming.live_window_seconds;
+            live_edge_segments = int_or "s-live-edge" cfg.streaming.live_edge_segments;
             default_segment_duration_us = cfg.streaming.default_segment_duration_us;
           };
           network = {

@@ -86,10 +86,10 @@ let close t =
 (* ── Request handling ──────────────────────────────────────────── *)
 
 let profile_of_vendor : Vendor.t -> Stream.Hls.profile = function
-  | Apple   -> { independent_segments = true;  playlist_type = true;  session_data = true;  start_offset = true;  iframe_stream = true }
-  | Samsung -> { independent_segments = false; playlist_type = false; session_data = false; start_offset = false; iframe_stream = false }
-  | Lg      -> { independent_segments = true;  playlist_type = true;  session_data = false; start_offset = true;  iframe_stream = false }
-  | Generic -> { independent_segments = true;  playlist_type = true;  session_data = true;  start_offset = true;  iframe_stream = true }
+  | Apple   -> { independent_segments = true;  playlist_type = true;  session_data = true;  iframe_stream = true }
+  | Samsung -> { independent_segments = false; playlist_type = false; session_data = false; iframe_stream = false }
+  | Lg      -> { independent_segments = true;  playlist_type = true;  session_data = false; iframe_stream = false }
+  | Generic -> { independent_segments = true;  playlist_type = true;  session_data = true;  iframe_stream = true }
 
 let mime_of ~rendition ~(container : Stream.Producer.Container.kind) =
   match container, rendition with

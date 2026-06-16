@@ -189,6 +189,7 @@ let trickmode_adaptation_set (iframe : Storyboard.t) =
     ]
 
 let mpd ~title ~is_live ~start_walltime_ms ~container
+      ?(live_delay_secs = 0.0)
       ~(video : Stream.t) ~(audio : Stream.t)
       ~video_rfc6381 ~audio_rfc6381
       ~video_segments ~audio_segments ?iframe_stream () =
@@ -198,11 +199,12 @@ let mpd ~title ~is_live ~start_walltime_ms ~container
   in
   let mpd_type = match is_live with true -> "dynamic" | false -> "static" in
   let n_video = Array.length video_segments in
-  let min_buffer_secs =
+  let avg_segment_secs =
     match n_video > 0 with
-    | true -> 2.0 *. total_duration_secs video_segments /. Float.of_int n_video
-    | false -> 2.0
+    | true -> total_duration_secs video_segments /. Float.of_int n_video
+    | false -> 1.0
   in
+  let min_buffer_secs = 2.0 *. avg_segment_secs in
   let base_attrs =
     [ attr "xmlns" "urn:mpeg:dash:schema:mpd:2011"
     ; attr "profiles" "urn:mpeg:dash:profile:isoff-on-demand:2011"
@@ -216,7 +218,8 @@ let mpd ~title ~is_live ~start_walltime_ms ~container
       [ attr "mediaPresentationDuration" (pt_duration_secs duration_secs) ]
     | true ->
       [ attr "availabilityStartTime" (iso8601_of_ms start_walltime_ms)
-      ; attr "minimumUpdatePeriod" "PT6S"
+      ; attr "minimumUpdatePeriod" (pt_duration_secs avg_segment_secs)
+      ; attr "suggestedPresentationDelay" (pt_duration_secs live_delay_secs)
       ; attr "timeShiftBufferDepth" (pt_duration_secs duration_secs)
       ]
   in

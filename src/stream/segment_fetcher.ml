@@ -3,8 +3,11 @@ open Util
 
 module Log = (val Log_src.src_log ~doc:"Segment-based stream fetcher" Stdlib.__MODULE__)
 
-let stale_threshold () = (Config.get ()).streaming.segment_stale_threshold_seconds
 let window_seconds () = (Config.get ()).streaming.live_window_seconds
+
+(* Refresh head metadata once it is older than this fraction of a segment's
+   duration, keeping live seqnum/walltime tightly up to date. *)
+let stale_ratio = 0.5
 
 let kind_string : type k. k Producer.Kind.witness -> string = function
   | Producer.Kind.Video -> "video"
@@ -40,8 +43,11 @@ let start_seqnum s =
   in
   Int.max 0 (s.head_seqnum - window_count)
 
+(* Header-derived metadata is only refreshed on fetch/HEAD, so it must be
+   refreshed once it is older than a fraction of a single segment's duration. *)
 let is_stale s =
-  Float.(Eio.Time.now s.clock -. s.last_fetch > stale_threshold ())
+  Float.(Eio.Time.now s.clock -. s.last_fetch
+         > Float.of_int (segment_duration_usec s) /. 1_000_000. *. stale_ratio)
 
 let update_head s (response : Http_client.response) =
   let headers = List.map ~f:(fun (h, v) -> (String.lowercase h, v)) response.headers in

@@ -19,7 +19,7 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
 
   let prefetch_daemon t : [ `Stop_daemon ] =
     let rec loop ~last_id = function
-      | cnt when cnt > t.count || cnt + last_id >= M.max_segment_id t.inner ->
+      | cnt when cnt > t.count || cnt + last_id > M.max_segment_id t.inner ->
         Eio.Condition.await_no_mutex t.prefetch;
         loop ~last_id:t.last_id 1
       | _ when last_id <> t.last_id ->

@@ -40,7 +40,7 @@ let chain (type k) ~transcode ~is_live (module M : Producer.S with type kind = k
   |+> (module Brand_override)
   |+> (module Cache)
   |+> (module Dedup)
-  |?> (is_live, (module Live_backoff))
+  |?> (is_live && false, (module Live_backoff))
   |+> (module Prefetch)
 
 
@@ -222,6 +222,21 @@ let segments_array t rendition =
   | `Video -> (Producer.info t.video).segments
   | `Audio -> (Producer.info t.audio).segments
 
+(* Seconds behind the live edge a player should start, expressed as a
+   configurable number of video segments. *)
+let live_delay_secs t =
+  let video_segs = segments_array t `Video in
+  match Array.length video_segs with
+  | 0 -> 0.0
+  | n ->
+    let total_usec =
+      Array.fold video_segs ~init:0
+        ~f:(fun acc (s : Producer.Segment_info.t) -> acc + s.length_usec)
+    in
+    let avg_usec = total_usec / n in
+    Float.of_int ((Config.get ()).streaming.live_edge_segments * avg_usec)
+    /. 1_000_000.
+
 let container t ~rendition =
   let shape = match rendition with
     | `Video -> Producer.Shape.container (Producer.shape t.video)
@@ -279,7 +294,7 @@ let media t ~base_url ~rendition ~profile =
   Hls.media ~profile ~media_sequence ?program_date_time ~base_url
     ~rendition:(rendition_name rendition)
     ~ext:(Producer.Container.to_ext container)
-    ~is_live:t.is_live segs
+    ~is_live:t.is_live ~live_delay_secs:(live_delay_secs t) segs
 
 let dash_mpd t =
   let video_segments = segments_array t `Video in
@@ -289,6 +304,7 @@ let dash_mpd t =
   let audio_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.audio) in
   Dash.mpd ~title:t.title ~is_live:t.is_live
     ~start_walltime_ms:t.start_walltime_ms ~container
+    ~live_delay_secs:(live_delay_secs t)
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
     ~video_segments ~audio_segments ?iframe_stream:(iframe_stream t) ()

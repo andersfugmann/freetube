@@ -299,11 +299,16 @@ let is_playback_stopped assoc =
       in
       (match data with
        | Some items ->
-           (match List.Assoc.find items ~equal:String.equal "type",
-                  List.Assoc.find items ~equal:String.equal "name" with
-            | Some (String "playbackState"), Some (String "stopped") -> true
-            | _ -> false)
-       | None -> false)
+          let find key =
+            match List.Assoc.find items ~equal:String.equal key with
+            | Some (String s) -> Some s
+            | _ -> None
+          in
+          (match find "type", find "name", find "reason" with
+           | Some "playbackState", Some "stopped", Some "interrupted" -> false
+           | Some "playbackState", Some "stopped", _ -> true
+           | _ -> false)
+      | None -> false)
   | _ -> false
 
 let start_event_receiver ~sw ~cancel_resolver ~event_stream =

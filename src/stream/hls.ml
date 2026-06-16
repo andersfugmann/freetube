@@ -18,7 +18,6 @@ type profile = {
   independent_segments : bool;
   playlist_type        : bool;
   session_data         : bool;
-  start_offset         : bool;
   iframe_stream        : bool;
 }
 
@@ -26,7 +25,6 @@ let generic_profile = {
   independent_segments = true;
   playlist_type        = true;
   session_data         = true;
-  start_offset         = true;
   iframe_stream        = true;
 }
 
@@ -108,6 +106,7 @@ let format_iso8601 walltime_ms =
   Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02d.%03d+00:00" y m d hh mm ss millis
 
 let media ?(profile = generic_profile) ?(media_sequence = 0) ?program_date_time
+      ?(live_delay_secs = 0.0)
       ~base_url:_ ~rendition ~ext ~is_live segments =
   let init_uri = Printf.sprintf "init.%s" ext in
   let header =
@@ -119,11 +118,12 @@ let media ?(profile = generic_profile) ?(media_sequence = 0) ?program_date_time
   in
   let map_line = Stdlib.Printf.sprintf "#EXT-X-MAP:URI=\"%s\"" init_uri in
   let body_prefix =
-    match is_live, profile.start_offset, profile.playlist_type with
-    | true,  true,  _     -> [ map_line; "#EXT-X-START:TIME-OFFSET=-60,PRECISE=YES" ]
-    | true,  false, _     -> [ map_line ]
-    | false, _,     true  -> [ "#EXT-X-PLAYLIST-TYPE:VOD"; map_line ]
-    | false, _,     false -> [ map_line ]
+    match is_live, profile.playlist_type with
+    | true,  _     ->
+      [ map_line
+      ; Printf.sprintf "#EXT-X-START:TIME-OFFSET=-%.3f,PRECISE=YES" live_delay_secs ]
+    | false, true  -> [ "#EXT-X-PLAYLIST-TYPE:VOD"; map_line ]
+    | false, false -> [ map_line ]
   in
   let pdt_line =
     match program_date_time with
@@ -313,7 +313,6 @@ let%expect_test "master playlist gating: Samsung-style profile drops advisory ta
     independent_segments = false;
     playlist_type        = false;
     session_data         = false;
-    start_offset         = false;
     iframe_stream        = false;
   } in
   let playlist =
@@ -332,7 +331,6 @@ let%expect_test "media playlist gating: Samsung drops PLAYLIST-TYPE" =
     independent_segments = false;
     playlist_type        = false;
     session_data         = false;
-    start_offset         = false;
     iframe_stream        = false;
   } in
   let playlist =
@@ -426,7 +424,7 @@ let%expect_test "golden master playlist: Apple/Generic profile" =
 let%expect_test "golden master playlist: Samsung profile" =
   let samsung = {
     independent_segments = false; playlist_type = false;
-    session_data = false; start_offset = false;
+    session_data = false;
     iframe_stream = false;
   } in
   let playlist =
@@ -449,7 +447,7 @@ let%expect_test "golden master playlist: Samsung profile" =
 let%expect_test "golden master playlist: Lg profile drops SESSION-DATA only" =
   let lg = {
     independent_segments = true; playlist_type = true;
-    session_data = false; start_offset = true;
+    session_data = false;
     iframe_stream = false;
   } in
   let playlist =
@@ -495,7 +493,7 @@ let%expect_test "golden media playlist: VOD generic profile" =
 let%expect_test "golden media playlist: Samsung profile drops PLAYLIST-TYPE" =
   let samsung = {
     independent_segments = false; playlist_type = false;
-    session_data = false; start_offset = false;
+    session_data = false;
     iframe_stream = false;
   } in
   let playlist =
@@ -646,7 +644,7 @@ let%expect_test "master playlist: I-FRAME-STREAM-INF emitted for generic profile
 let%expect_test "master playlist: I-FRAME-STREAM-INF absent for Samsung profile" =
   let samsung = {
     independent_segments = false; playlist_type = false;
-    session_data = false; start_offset = false;
+    session_data = false;
     iframe_stream = false;
   } in
   let ifs : Storyboard.t = {

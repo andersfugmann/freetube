@@ -5,8 +5,8 @@ type ip_version = [ `V4 | `V6 ] [@@deriving yojson]
 type streaming = {
   prefetch_count : int;
   cache_capacity : int;
-  segment_stale_threshold_seconds : float;
   live_window_seconds : int;
+  live_edge_segments : int;
   default_segment_duration_us : int;
 } [@@deriving yojson]
 
@@ -53,8 +53,8 @@ let default = {
   streaming = {
     prefetch_count = 3;
     cache_capacity = 6;
-    segment_stale_threshold_seconds = 10.0;
     live_window_seconds = 10800;
+    live_edge_segments = 6;
     default_segment_duration_us = 5_000_000;
   };
   network = {

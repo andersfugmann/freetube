@@ -3,10 +3,6 @@ open! Base
 module Log = (val Util.Log_src.src_log ~doc:"Life segment backoff" Stdlib.__MODULE__)
 
 module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
-
-  (* We want to remember the previous state and hold back the last segment in the stream *)
-  (* When initializing, calculate segment length in seconds. Then report max_segment_id one lower, and only update when we expect there to be another segment *)
-
   type state = {
     inner : M.state;
     mutable info: Producer.Info.t;
