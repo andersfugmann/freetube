@@ -48,22 +48,6 @@ let classify (s : Youtube.Video_info.Stream.t) =
 (* Compare video based on encoding, bitrate, dynamic range et. al. *)
 let compare_video =
   let open Youtube.Video_info.Stream in
-  (*
-  let bitrate s =
-    let bitrate_k = match s.vbr with
-      | Some v -> v *. 1000.0
-      | None -> Option.value s.tbr ~default:0.0 *. 1000.0
-    in
-    match Option.map ~f:fst s.vcodec with
-    | Some Av1 -> bitrate_k /. 0.35
-    | Some Hevc -> bitrate_k /. 0.40
-    | Some Vp9 -> bitrate_k /. 0.55
-    | Some Avc -> bitrate_k /. 1.0
-    | Some Unknown -> 0.0
-    | None -> 0.0
-  in
-  *)
-
   let ordering = [
     Cmp ((fun s -> Option.value ~default:0 s.width), Int.compare, `Desc);
     Cmp ((fun s -> Option.value s.dynamic_range ~default:Codec.Dynamic_range.Sdr), Codec.Dynamic_range.compare, `Asc);

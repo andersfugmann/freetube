@@ -59,24 +59,41 @@ let mime_type_of ~media container =
 let ext_of container =
   Producer.Container.to_ext container
 
-let segment_template ~prefix ~is_live ~timescale ~container segments =
-  let ext = ext_of container in
-  let duration_ticks =
-    let n = Array.length segments in
-    match n > 0 with
-    | true ->
-      let avg_dur = total_duration_secs segments /. Float.of_int n in
-      Float.to_int (avg_dur *. Float.of_int timescale)
+let ticks ~timescale usec = usec * timescale / 1_000_000
+
+let segment_timeline ~timescale segments =
+  let start_t =
+    match Array.length segments > 0 with
+    | true -> ticks ~timescale segments.(0).Producer.Segment_info.start_usec
     | false -> 0
   in
+  let runs =
+    Array.to_list segments
+    |> List.map ~f:(fun (s : Producer.Segment_info.t) -> ticks ~timescale s.length_usec)
+    |> List.fold ~init:[] ~f:(fun acc d ->
+      match acc with
+      | (d', n) :: rest when d' = d -> (d', n + 1) :: rest
+      | _ -> (d, 1) :: acc)
+    |> List.rev
+  in
+  let entries =
+    List.mapi runs ~f:(fun i (d, n) ->
+      let t_attr = match i with 0 -> [ attr "t" (Int.to_string start_t) ] | _ -> [] in
+      let r_attr = match n > 1 with true -> [ attr "r" (Int.to_string (n - 1)) ] | false -> [] in
+      tag "S" (t_attr @ [ attr "d" (Int.to_string d) ] @ r_attr) [])
+  in
+  tag "SegmentTimeline" [] entries
+
+let segment_template ~prefix ~is_live ~timescale ~container segments =
+  let ext = ext_of container in
   let start_number = segment_start_number ~is_live segments in
   tag "SegmentTemplate"
     [ attr "timescale" (Int.to_string timescale)
-    ; attr "duration" (Int.to_string duration_ticks)
     ; attr "startNumber" (Int.to_string start_number)
     ; attr "initialization" (prefix ^ "/init." ^ ext)
     ; attr "media" (prefix ^ "/seg/$Number$." ^ ext)
-    ] []
+    ]
+    [ segment_timeline ~timescale segments ]
 
 let video_adaptation_set ~is_live ~timescale ~container
       ~(video : Stream.t) ~video_rfc6381 video_segments =
@@ -307,6 +324,23 @@ let%expect_test "VOD MPD is valid XML with expected structure" =
     (has "seg/$Number$.mp4")
     (has "mediaPresentationDuration");
   [%expect {| xml_decl=true static=true period=true video_as=true audio_as=true init=true seg_tmpl=true duration=true |}]
+
+let%expect_test "VOD MPD enumerates segments via SegmentTimeline" =
+  let result = mpd ~title:"Test Video"
+    ~is_live:false ~start_walltime_ms:0 ~container:Producer.Container.Mp4
+    ~video:sample_video ~audio:sample_audio
+    ~video_rfc6381:"avc1.640028" ~audio_rfc6381:"mp4a.40.2"
+    ~video_segments:sample_video_segments
+    ~audio_segments:sample_audio_segments ()
+  in
+  let has s = String.is_substring result ~substring:s in
+  Stdlib.Printf.printf "timeline=%b no_tmpl_duration=%b first_s=%b run=%b last_s=%b\n"
+    (has "<SegmentTimeline>")
+    (not (has "SegmentTemplate timescale=\"1000\" duration"))
+    (has "<S t=\"0\" d=\"4000\" r=\"1\"")
+    (has "r=\"1\"")
+    (has "<S d=\"3000\"");
+  [%expect {| timeline=true no_tmpl_duration=true first_s=true run=true last_s=true |}]
 
 let%expect_test "VOD MPD contains correct codec strings" =
   let result = mpd ~title:"Test Video"

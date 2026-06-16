@@ -631,13 +631,21 @@ Output shape:
     <AdaptationSet contentType="video" mimeType="video/mp4" codecs="avc1.640028" width="1920" height="1080" frameRate="30">
       <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
       <Representation id="video" bandwidth="4000000">
-        <SegmentTemplate timescale="1000" initialization="video/init.m4s" media="video/$Number$.m4s" duration="6000" startNumber="0"/>
+        <SegmentTemplate timescale="1000" initialization="video/init.m4s" media="video/seg/$Number$.m4s" startNumber="0">
+          <SegmentTimeline>
+            <S t="0" d="6000" r="19"/>
+          </SegmentTimeline>
+        </SegmentTemplate>
       </Representation>
     </AdaptationSet>
     <AdaptationSet contentType="audio" mimeType="audio/mp4" codecs="mp4a.40.2" lang="en">
       <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
       <Representation id="audio" bandwidth="128000">
-        <SegmentTemplate timescale="1000" initialization="audio/init.m4s" media="audio/$Number$.m4s" duration="6000" startNumber="0"/>
+        <SegmentTemplate timescale="1000" initialization="audio/init.m4s" media="audio/seg/$Number$.m4s" startNumber="0">
+          <SegmentTimeline>
+            <S t="0" d="6000" r="19"/>
+          </SegmentTimeline>
+        </SegmentTemplate>
       </Representation>
     </AdaptationSet>
   </Period>

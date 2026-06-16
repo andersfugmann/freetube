@@ -74,9 +74,9 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
                   input_timescale = 0; output_timescale = 0 },
       Producer.Shape.with_container target Producer.Container.Mp4
 
-  let meta = function
-    | Passthrough inner -> M.meta inner
-    | Transcode { inner; _ } -> M.meta inner
+  let info = function
+    | Passthrough inner -> M.info inner
+    | Transcode { inner; _ } -> M.info inner
 
   let run_transcode ~env ~input_format ~video_params ~audio_params ~semaphore input =
     Eio.Semaphore.acquire semaphore;
@@ -110,10 +110,6 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
         s.output_timescale <- Bmff.mdhd_timescale init_data;
         s.init_seg <- Some init_data;
         init_data
-
-  let segments = function
-    | Passthrough inner -> M.segments inner
-    | Transcode { inner; _ } -> M.segments inner
 
   let max_segment_id = function
     | Passthrough inner -> M.max_segment_id inner

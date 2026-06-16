@@ -15,9 +15,8 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
     let inner, shape = M.init ~env ~sw ~target in
     { inner; pending = Hashtbl.create (module Int) }, shape
 
-  let meta s = M.meta s.inner
+  let info s = M.info s.inner
   let init_segment s = M.init_segment s.inner
-  let segments s = M.segments s.inner
   let max_segment_id s = M.max_segment_id s.inner
   let close s = M.close s.inner
 

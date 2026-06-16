@@ -1,4 +1,3 @@
-
 open! Base
 open Util
 
@@ -31,7 +30,7 @@ let ( |?> ) (type k) (module M : Producer.S with type kind = k) (cond, (module Y
   | true ->
     (module M) |+> (module Y)
 
-let chain (type k) ~transcode (module M : Producer.S with type kind = k) =
+let chain (type k) ~transcode ~is_live (module M : Producer.S with type kind = k) =
   (module M : Producer.S with type kind = k)
   |+> (module Container_to_fmp4)
   |?> (transcode, (module Cache))
@@ -41,6 +40,7 @@ let chain (type k) ~transcode (module M : Producer.S with type kind = k) =
   |+> (module Brand_override)
   |+> (module Cache)
   |+> (module Dedup)
+  |?> (is_live, (module Live_backoff))
   |+> (module Prefetch)
 
 
@@ -187,17 +187,17 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode 
           ~noclen:(has_noclen video.url) ~headers:video.http_headers
           ~codec:source_video_codec ~dynamic_range:source_dynamic_range
           ~rfc6381:source_video_rfc6381 video_source
-        |> chain ~transcode
+        |> chain ~transcode ~is_live
         |> Producer.init ~env ~sw ~target:video_target
       in
       let audio_p =
         make_audio ~clock ~client ~url:audio.url ~is_live
           ~noclen:(has_noclen audio.url) ~headers:audio.http_headers
           ~codec:source_audio_codec ~rfc6381:source_audio_rfc6381 audio_source
-        |> chain ~transcode
+        |> chain ~transcode ~is_live
         |> Producer.init ~env ~sw ~target:audio_target
       in
-      let meta = Producer.meta video_p in
+      let meta = Producer.info video_p in
       Log.info (fun m ->
         let raw_of opt = match opt with Some (_, r) -> r | None -> "?" in
         m "stream source: video=%s audio=%s is_live=%b noclen=%b"
@@ -218,13 +218,9 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode 
         storyboard }
 
 let segments_array t rendition =
-  let segs =
-    match rendition with
-    | `Video -> Producer.segments t.video
-    | `Audio -> Producer.segments t.audio
-  in
-  match segs with
-  | Producer.Segments.Known a | Streaming a -> a
+  match rendition with
+  | `Video -> (Producer.info t.video).segments
+  | `Audio -> (Producer.info t.audio).segments
 
 let container t ~rendition =
   let shape = match rendition with

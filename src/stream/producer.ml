@@ -57,12 +57,6 @@ module Segment_info = struct
   }
 end
 
-module Segments = struct
-  type t =
-    | Known     of Segment_info.t array
-    | Streaming of Segment_info.t array
-end
-
 module Segment = struct
   type t = {
     start_usec  : int;
@@ -71,11 +65,12 @@ module Segment = struct
   }
 end
 
-module Meta = struct
+module Info = struct
   type t = {
     total_duration_usec : int option;
     start_walltime_ms   : int;
     is_live             : bool;
+    segments            : Segment_info.t array;
   }
 end
 
@@ -141,9 +136,8 @@ module type S = sig
   type kind
   val witness        : kind Kind.witness
   val init           : env:Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> target:kind Shape.t -> state * kind Shape.t
-  val meta           : state -> Meta.t
+  val info           : state -> Info.t
   val init_segment   : state -> string
-  val segments       : state -> Segments.t
   val max_segment_id : state -> int
   val fetch_segment  : state -> id:int -> Segment.t
   val close          : state -> unit
@@ -159,9 +153,8 @@ let init (type k) ~env ~sw ~target (module M : S with type kind = k) : k t =
 
 let shape (type k) (Producer (_, _, sh) : k t) = sh
 let witness (type k) (Producer ((module M), _, _) : k t) : k Kind.witness = M.witness
-let meta (type k) (Producer ((module M), s, _) : k t) : Meta.t = M.meta s
+let info (type k) (Producer ((module M), s, _) : k t) : Info.t = M.info s
 let init_segment (type k) (Producer ((module M), s, _) : k t) = M.init_segment s
-let segments (type k) (Producer ((module M), s, _) : k t) = M.segments s
 let max_segment_id (type k) (Producer ((module M), s, _) : k t) = M.max_segment_id s
 let fetch_segment (type k) (Producer ((module M), s, _) : k t) ~id = M.fetch_segment s ~id
 let close (type k) (Producer ((module M), s, _) : k t) = M.close s

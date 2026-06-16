@@ -79,9 +79,6 @@ let map_status ~ip_version ~start ~len:_ ~body ~headers status
 let head client url ?(headers = []) ()
   : (int, Error.t) Result.t =
   let uri = Uri.of_string url in
-  Log.debug (fun m ->
-    m "head %s headers=[%s]" (short_url url)
-      (List.map headers ~f:fst |> String.concat ~sep:";"));
   let total_from headers =
     List.find_map headers ~f:(fun (k, v) ->
       match String.equal (String.lowercase k) "content-length" with
@@ -91,7 +88,7 @@ let head client url ?(headers = []) ()
   try
     let ipv = ip_version () in
     let response = Http_client.head client ~ip_version:ipv ~headers uri in
-    Log.debug (fun m -> m "head %s: %d" url response.status);
+    Log.debug (fun m -> m "head %s: %d" (short_url url) response.status);
     match response.status with
     | 200 ->
         (match total_from response.headers with
@@ -107,10 +104,10 @@ let head client url ?(headers = []) ()
   | Http_client.Http_failure m -> Error (Error.Network m)
   | Eio.Time.Timeout -> Error Error.Timeout
   | End_of_file ->
-      Log.err (fun m -> m "head %s: unexpected end-of-file" url);
+      Log.err (fun m -> m "head %s: unexpected end-of-file" (short_url url));
       Error (Error.Network "end-of-file")
   | exn ->
-      Log.err (fun m -> m "head %s: %s" url (Exn.to_string exn));
+      Log.err (fun m -> m "head %s: %s" (short_url url) (Exn.to_string exn));
       Error (Error.Network (Exn.to_string exn))
 
 let fetch client url ?(headers = []) ~start ~len ()
@@ -132,8 +129,8 @@ let fetch client url ?(headers = []) ~start ~len ()
   | Http_client.Http_failure m -> Error (Error.Network m)
   | Eio.Time.Timeout -> Error Error.Timeout
   | End_of_file ->
-      Log.err (fun m -> m "fetch %s %s: unexpected end-of-file" url range_value);
+      Log.err (fun m -> m "fetch %s %s: unexpected end-of-file" (short_url url) range_value);
       Error (Error.Network "end-of-file")
   | exn ->
-      Log.err (fun m -> m "fetch %s %s: %s" url range_value (Exn.to_string exn));
+      Log.err (fun m -> m "fetch %s %s: %s" (short_url url) range_value (Exn.to_string exn));
       Error (Error.Network (Exn.to_string exn))

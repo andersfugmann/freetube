@@ -41,7 +41,9 @@ let error_message e = Stdlib.Format.asprintf "%a" Piaf.Error.pp_hum e
 
 let to_response (response : Piaf.Response.t) =
   match Piaf.Body.to_string response.body with
-  | Error e -> raise (Http_failure (Printf.sprintf "body read: %s" (error_message e)))
+  | Error e ->
+      Eio.Fiber.check ();
+      raise (Http_failure (Printf.sprintf "body read: %s" (error_message e)))
   | Ok body ->
       {
         Http_client.status = Piaf.Status.to_code response.status;
@@ -51,6 +53,7 @@ let to_response (response : Piaf.Response.t) =
   | exception End_of_file ->
       raise (Http_failure "body read: unexpected end-of-file")
   | exception exn ->
+      Eio.Fiber.check ();
       raise (Http_failure (Printf.sprintf "body read: %s" (Exn.to_string exn)))
 
 
@@ -141,7 +144,7 @@ let request: t -> meth:Piaf.Method.t -> ip_version:[ `V4 | `V6] -> ?headers:(str
     let target_str = target_of uri in
     let body = Option.map ~f:Piaf.Body.of_string body in
     match Piaf.Client.request client ?headers ?body ~meth target_str with
-    | Error e -> raise (Http_failure (error_message e))
+    | Error e -> Eio.Fiber.check (); raise (Http_failure (error_message e))
     | Ok r -> to_response r
   in
   with_client t ~ip_version ~oneshot uri ~f

@@ -140,7 +140,7 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
     { inner; container; init_bytes = None;
       segment_duration_usec = default_target_duration_us }, shape
 
-  let meta s = M.meta s.inner
+  let info s = M.info s.inner
 
   let init_segment s =
     match s.init_bytes with
@@ -156,7 +156,6 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
         s.init_bytes <- Some init_bytes;
         init_bytes
 
-  let segments s = M.segments s.inner
   let max_segment_id s = M.max_segment_id s.inner
   let close s = M.close s.inner
 

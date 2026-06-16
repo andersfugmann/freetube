@@ -10,6 +10,10 @@ type content =
   | Stream of Stream.Source.t
   | Direct of Uri.t
 
+(* Raised to tear down a session's switch on a normal stop. Distinct from a
+   genuine failure so request handling and logging can stay quiet. *)
+exception Session_stopped
+
 let max_reconstruct_attempts = 1
 
 type t = {
@@ -22,6 +26,7 @@ type t = {
   mutable sink: Sink.t;
   mutable sw: Eio.Switch.t option;
   mutable retries_remaining: int;
+  mutable stopped: bool;
   mutable closed: bool;
   ttl: float;
   clock: float Eio.Time.clock_ty Eio.Resource.t;
@@ -41,7 +46,12 @@ let stream t =
 let touch t = t.last_accessed_at <- Eio.Time.now t.clock
 
 let stop t =
-  Eio.Switch.fail (Option.value_exn t.sw) (Failure "session stopped")
+  match t.stopped with
+  | true -> ()
+  | false ->
+    t.stopped <- true;
+    Option.iter t.sw ~f:(fun sw ->
+      try Eio.Switch.fail sw Session_stopped with Invalid_argument _ -> ())
 
 let init ~id ~clock ~ttl ~content_factory ~sink_factory =
   let now = Eio.Time.now clock in
@@ -54,6 +64,7 @@ let init ~id ~clock ~ttl ~content_factory ~sink_factory =
     sink = Sink.Url_consumer;
     sw = None;
     retries_remaining = max_reconstruct_attempts;
+    stopped = false;
     closed = false;
     ttl;
     clock }
@@ -171,10 +182,12 @@ let recreate_content t =
   Log.info (fun m -> m "session %s: source invalidated, will recreate on next request" t.id)
 
 let rec handle_request t ~path =
-  match t.closed with
+  match t.stopped with
   | true -> Error (Unavailable "session stopped")
   | false ->
     try serve t ~path with
+    | Session_stopped -> Error (Unavailable "session stopped")
+    | _ when t.stopped -> Error (Unavailable "session stopped")
     | exn when t.retries_remaining > 0 ->
       Log.info (fun m -> m "session %s: error: %s; recreating" t.id (Exn.to_string exn));
       t.retries_remaining <- t.retries_remaining - 1;
@@ -226,9 +239,6 @@ let run t ~on_terminate =
         Eio.Fiber.await_cancel ())
     with
     | () -> ()
+    | exception Session_stopped -> ()
     | exception exn ->
-      let msg = Exn.to_string exn in
-      match String.is_substring msg ~substring:"session stopped" with
-      | true -> ()
-      | false ->
-        Log.err (fun m -> m "session %s failed: %s" t.id msg))
+      Log.err (fun m -> m "session %s failed: %s" t.id (Exn.to_string exn)))

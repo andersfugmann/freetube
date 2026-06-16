@@ -1,15 +1,20 @@
 open! Base
 
 (** Cache functor — wraps a producer with segment memoisation.
-    Caches the last 6 fetched segments in a Linked_queue keyed by
-    segment id. *)
+    Keeps the [streaming.cache_capacity] most-recently-accessed segments
+    in an LRU keyed by segment id. *)
 module Log = (val Util.Log_src.src_log ~doc:"segment prefetcher" Stdlib.__MODULE__)
-let capacity () = (Config.get ()).streaming.cache_capacity
+
+module Cache_entry = struct
+  type t = Producer.Segment.t
+  let weight _ = 1
+end
+module Lru_cache = Lru.M.Make (Int)(Cache_entry)
 
 module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
   type state = {
     inner : M.state;
-    cache : (int * Producer.Segment.t) Linked_queue.t;
+    cache : Lru_cache.t;
   }
   type kind = M.kind
   let witness = M.witness
@@ -21,25 +26,23 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
 
   let init ~env ~sw ~target =
     let inner, shape = M.init ~env ~sw ~target in
-    { inner; cache = Linked_queue.create () }, shape
+    { inner; cache = Lru_cache.create (Config.get ()).streaming.cache_capacity }, shape
 
-  let meta s = M.meta s.inner
+  let info s = M.info s.inner
   let init_segment s = M.init_segment s.inner
-  let segments s = M.segments s.inner
   let max_segment_id s = M.max_segment_id s.inner
   let close s = M.close s.inner
 
   let fetch_segment s ~id =
-    match Linked_queue.find s.cache ~f:(fun (id', _) -> id = id') with
-    | Some (_, seg) ->
+    match Lru_cache.find id s.cache with
+    | Some seg ->
+      Lru_cache.promote id s.cache;
       Log.debug (fun m -> m "Cache hit: %s %d" kind id);
       seg
     | None ->
       Log.debug (fun m -> m "Cache miss: %s %d" kind id);
       let seg = M.fetch_segment s.inner ~id in
-      Linked_queue.enqueue s.cache (id, seg);
-      while Linked_queue.length s.cache > capacity () do
-        Linked_queue.dequeue_and_ignore_exn s.cache
-      done;
+      Lru_cache.add id seg s.cache;
+      Lru_cache.trim s.cache;
       seg
 end

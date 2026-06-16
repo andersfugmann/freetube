@@ -39,6 +39,7 @@
   stdio
   ezxmlm
   uri
+  lru
   ipaddr
   dns
   magic-mime

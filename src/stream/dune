@@ -1,6 +1,6 @@
 (library
  (name stream)
- (libraries util youtube codec api config base eio eio.unix uri yojson logs ptime piaf stdio memfd cstruct ezxmlm)
+ (libraries util youtube codec api config base eio eio.unix uri yojson logs ptime piaf stdio memfd cstruct ezxmlm lru)
  (inline_tests (deps testdata.json))
  (preprocess
   (pps ppx_deriving_yojson ppx_compare ppx_inline_test ppx_expect ppx_jane)))

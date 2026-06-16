@@ -6,6 +6,11 @@ module Log = (val Log_src.src_log ~doc:"Segment-based stream fetcher" Stdlib.__M
 let stale_threshold () = (Config.get ()).streaming.segment_stale_threshold_seconds
 let window_seconds () = (Config.get ()).streaming.live_window_seconds
 
+let kind_string : type k. k Producer.Kind.witness -> string = function
+  | Producer.Kind.Video -> "video"
+  | Producer.Kind.Audio -> "audio"
+  | Producer.Kind.Muxed -> "muxed"
+
 type 'k state = {
   client          : Http_client.t;
   clock           : float Eio.Time.clock_ty Eio.Resource.t;
@@ -13,6 +18,7 @@ type 'k state = {
   headers         : (string * string) list;
   container       : Producer.Container.kind;
   is_live         : bool;
+  witness         : 'k Producer.Kind.witness;
   mutable head_seqnum      : int;
   mutable head_time_millis : int;
   mutable walltime_ms      : int;
@@ -64,9 +70,16 @@ let update_head s (response : Http_client.response) =
 let do_head s =
   let uri = Uri.of_string s.url in
   let t0 = Eio.Time.now s.clock in
+  let since_update =
+    match Float.(s.last_fetch > 0.0) with
+    | true -> Printf.sprintf "%.1fs" (t0 -. s.last_fetch)
+    | false -> "never"
+  in
   let response = Http_client.head s.client ~ip_version:(Config.get ()).network.ip_version ~headers:s.headers uri in
   let elapsed_ms = (Eio.Time.now s.clock -. t0) *. 1000.0 in
-  Log.info (fun m -> m "HEAD %s status=%d time=%dms" s.url response.status (Float.to_int elapsed_ms));
+  Log.info (fun m ->
+    m "HEAD %s status=%d time=%dms last_update=%s"
+      (kind_string s.witness) response.status (Float.to_int elapsed_ms) since_update);
   match response.status with
   | 200 -> update_head s response
   | code ->
@@ -105,17 +118,29 @@ let fetch_latest s =
       Producer.Error.raise_error
         (Producer.Error.Source_unavailable (Printf.sprintf "http %d" code))
 
-let meta s =
+let info s =
+  ensure_head s;
   let start = start_seqnum s in
   let start_walltime_ms =
     match s.walltime_ms > 0 && s.head_seqnum > 0 with
     | true -> s.walltime_ms - (s.head_seqnum - start) * (segment_duration_usec s / 1000)
     | false -> 0
   in
-  { Producer.Meta.
+  let count = s.head_seqnum - start + 1 in
+  let dur = segment_duration_usec s in
+  let segments =
+    Array.init count ~f:(fun i ->
+      { Producer.Segment_info.
+        start_usec = (start + i) * dur;
+        length_usec = dur;
+        byte_length = 0;
+      })
+  in
+  { Producer.Info.
     total_duration_usec = None;
     start_walltime_ms;
     is_live = s.is_live;
+    segments;
   }
 
 let init_segment s =
@@ -125,21 +150,6 @@ let init_segment s =
       let raw = fetch_latest s in
       s.init_raw <- Some raw;
       raw
-
-let segments s =
-  ensure_head s;
-  let start = start_seqnum s in
-  let count = s.head_seqnum - start + 1 in
-  let dur = segment_duration_usec s in
-  let segs =
-    Array.init count ~f:(fun i ->
-      { Producer.Segment_info.
-        start_usec = (start + i) * dur;
-        length_usec = dur;
-        byte_length = 0;
-      })
-  in
-  Producer.Segments.Streaming segs
 
 let max_segment_id s = s.head_seqnum
 
@@ -168,11 +178,11 @@ let create_video ~clock ~client ~url ~headers ~is_live ~container ~codec ~dynami
         Producer.Shape.Video { container; codec; dynamic_range; rfc6381 }
       in
       { client; clock; url; headers; container; is_live;
+        witness;
         head_seqnum = 0; head_time_millis = 0; walltime_ms = 0;
         last_fetch = 0.0; init_raw = None }, shape
-    let meta = meta
+    let info = info
     let init_segment = init_segment
-    let segments = segments
     let max_segment_id = max_segment_id
     let fetch_segment = fetch_segment
     let close = close
@@ -189,11 +199,11 @@ let create_audio ~clock ~client ~url ~headers ~is_live ~container ~codec ~rfc638
         Producer.Shape.Audio { container; codec; rfc6381 }
       in
       { client; clock; url; headers; container; is_live;
+        witness;
         head_seqnum = 0; head_time_millis = 0; walltime_ms = 0;
         last_fetch = 0.0; init_raw = None }, shape
-    let meta = meta
+    let info = info
     let init_segment = init_segment
-    let segments = segments
     let max_segment_id = max_segment_id
     let fetch_segment = fetch_segment
     let close = close

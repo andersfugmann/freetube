@@ -25,7 +25,7 @@ type 'k state = {
   init_bytes   : string;
   segments     : Producer.Segment_info.t array;
   offsets      : int array;
-  meta         : Producer.Meta.t;
+  info         : Producer.Info.t;
 }
 
 module Log = (val Util.Log_src.src_log ~doc:"byte-range segment source" Stdlib.__MODULE__)
@@ -56,10 +56,11 @@ module Make (F : Format) = struct
 
       let init ~env:_ ~sw:_ ~target:_ =
         let p = F.parse client url ~headers in
-        let meta : Producer.Meta.t = {
+        let info : Producer.Info.t = {
           total_duration_usec = Some (total_duration_usec p.segments);
           start_walltime_ms = 0;
           is_live = false;
+          segments = p.segments;
         } in
         let shape : Producer.video Producer.Shape.t =
           Producer.Shape.Video { container = F.container; codec; dynamic_range; rfc6381 }
@@ -69,11 +70,10 @@ module Make (F : Format) = struct
           init_bytes   = p.init_bytes;
           segments     = p.segments;
           offsets      = p.offsets;
-          meta }, shape
+          info }, shape
 
-      let meta s = s.meta
+      let info s = s.info
       let init_segment s = s.init_bytes
-      let segments s = Producer.Segments.Known s.segments
       let max_segment_id s = Array.length s.segments - 1
       let close _ = ()
 
@@ -115,10 +115,11 @@ module Make (F : Format) = struct
 
       let init ~env:_ ~sw:_ ~target:_ =
         let p = F.parse client url ~headers in
-        let meta : Producer.Meta.t = {
+        let info : Producer.Info.t = {
           total_duration_usec = Some (total_duration_usec p.segments);
           start_walltime_ms = 0;
           is_live = false;
+          segments = p.segments;
         } in
         let shape : Producer.audio Producer.Shape.t =
           Producer.Shape.Audio { container = F.container; codec; rfc6381 }
@@ -128,11 +129,10 @@ module Make (F : Format) = struct
           init_bytes   = p.init_bytes;
           segments     = p.segments;
           offsets      = p.offsets;
-          meta }, shape
+          info }, shape
 
-      let meta s = s.meta
+      let info s = s.info
       let init_segment s = s.init_bytes
-      let segments s = Producer.Segments.Known s.segments
       let max_segment_id s = Array.length s.segments - 1
       let close _ = ()
 

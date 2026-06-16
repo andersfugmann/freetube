@@ -35,9 +35,9 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
     | _ ->
       Passthrough inner, inner_shape
 
-  let meta = function
-    | Passthrough inner -> M.meta inner
-    | Rewrite { inner; _ } -> M.meta inner
+  let info = function
+    | Passthrough inner -> M.info inner
+    | Rewrite { inner; _ } -> M.info inner
 
   let init_segment = function
     | Passthrough inner -> M.init_segment inner
@@ -48,10 +48,6 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
         let bytes = Bmff.set_major_brand (M.init_segment s.inner) ~brand in
         s.init_bytes <- Some bytes;
         bytes
-
-  let segments = function
-    | Passthrough inner -> M.segments inner
-    | Rewrite { inner; _ } -> M.segments inner
 
   let max_segment_id = function
     | Passthrough inner -> M.max_segment_id inner

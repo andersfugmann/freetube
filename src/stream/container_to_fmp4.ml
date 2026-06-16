@@ -217,17 +217,13 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
       | Producer.Container.Mpeg_ts ->
         failwith "container_to_fmp4: mpeg_ts remuxing not supported"
 
-  let meta = function
-    | Passthrough inner -> M.meta inner
-    | Remux s -> M.meta s.inner
+  let info = function
+    | Passthrough inner -> M.info inner
+    | Remux s -> M.info s.inner
 
   let init_segment = function
     | Passthrough inner -> M.init_segment inner
     | Remux s -> s.init_bytes
-
-  let segments = function
-    | Passthrough inner -> M.segments inner
-    | Remux s -> M.segments s.inner
 
   let max_segment_id = function
     | Passthrough inner -> M.max_segment_id inner

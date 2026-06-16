@@ -1,17 +1,13 @@
 open! Base
 
-(** Prefetch functor — on every fetch_segment ~id, spawns a fiber
-    to fetch id+1 through the inner producer (warming the cache)
-    without blocking the caller. *)
 module Log = (val Util.Log_src.src_log ~doc:"segment prefetcher" Stdlib.__MODULE__)
-
-let prefetch_count () = (Config.get ()).streaming.prefetch_count
 
 module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
   type state = {
     inner : M.state;
     mutable last_id : int;
     prefetch : Eio.Condition.t;
+    count : int;
   }
   type kind = M.kind
   let witness = M.witness
@@ -21,35 +17,51 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
     | Producer.Kind.Audio -> "audio"
     | Producer.Kind.Muxed -> "muxed"
 
-  let rec prefetch_daemon t : [ `Stop_daemon ] =
-    let rec loop ~last_id cnt =
-      let id = last_id + cnt in
-      Log.debug (fun m -> m "Prefetch %s %d" kind id);
-      match M.fetch_segment t.inner ~id with
-      | _ when last_id = t.last_id |> not ->
+  let prefetch_daemon t : [ `Stop_daemon ] =
+    let rec loop ~last_id = function
+      | cnt when cnt > t.count || cnt + last_id >= M.max_segment_id t.inner ->
+        Eio.Condition.await_no_mutex t.prefetch;
         loop ~last_id:t.last_id 1
-      | _ when cnt < prefetch_count () && id <= M.max_segment_id t.inner ->
-        loop ~last_id (cnt + 1)
-      | _ -> ()
-      | exception (Eio.Cancel.Cancelled _ as exn) ->
-        Stdlib.raise exn
-      | exception exn ->
-        Log.debug (fun m -> m "Got error on %s %d: %s. sleep" kind id (Exn.to_string exn));
+      | _ when last_id <> t.last_id ->
+        loop ~last_id:t.last_id 1
+      | cnt ->
+        let fetch_ok =
+          try
+            Log.debug (fun m -> m "Prefetch %s %d" kind (cnt + last_id));
+            let (_ : Producer.Segment.t) = M.fetch_segment t.inner ~id:(cnt + last_id) in
+            true
+          with
+          | (Eio.Cancel.Cancelled _ as exn) -> Stdlib.raise exn
+          | exn ->
+            Log.warn (fun m -> m "Got error on %s %d: %s. sleep" kind (cnt + last_id) (Exn.to_string exn));
+            false
+        in
+        match fetch_ok with
+        | true ->
+          loop ~last_id (cnt + 1)
+        | false ->
+          (* Force sleep *)
+          loop ~last_id (t.count + 1)
     in
-    loop ~last_id:t.last_id 1;
-    Eio.Condition.await_no_mutex t.prefetch;
-    prefetch_daemon t
+    loop ~last_id:t.last_id 1
 
   let init ~env ~sw ~target =
     Log.info (fun m -> m "Prefetch initialized");
     let inner, shape = M.init ~env ~sw ~target in
-    let t = { inner; last_id = -1; prefetch = Eio.Condition.create () } in
+    let count = (Config.get ()).streaming.prefetch_count in
+
+    (* Prefetch at the end of a live stream *)
+    let last_id = match (M.info inner).is_live with
+      | true -> M.max_segment_id inner - count
+      | false -> -1
+    in
+
+    let t = { inner; last_id; prefetch = Eio.Condition.create (); count; } in
     Eio.Fiber.fork_daemon ~sw (fun () -> prefetch_daemon t);
     t, shape
 
-  let meta t = M.meta t.inner
+  let info t = M.info t.inner
   let init_segment t = M.init_segment t.inner
-  let segments t = M.segments t.inner
   let max_segment_id t = M.max_segment_id t.inner
   let close t = M.close t.inner
 
