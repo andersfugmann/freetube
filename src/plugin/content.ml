@@ -77,13 +77,24 @@ let toast ~ok msg =
 
 let close_picker () = remove_existing "freetube-picker"
 
+(* Pause YouTube's player so playback doesn't run locally and on the cast
+   device at once. Content scripts live in an isolated world, so we drive the
+   native <video> element (whose [pause] is part of the DOM) rather than
+   YouTube's page-defined [pauseVideo], which isn't visible to us. *)
+let pause_local_playback () =
+  Js.Opt.iter
+    (document##querySelector (Js.string "video.html5-main-video"))
+    (fun video -> ignore (Js.Unsafe.meth_call video "pause" [||] : _))
+
 let cast_to ~device_id =
   match video_id_of_location () with
   | None -> toast ~ok:false "No video on this page"
   | Some video_id ->
       toast ~ok:true "Casting...";
       send_request (Cast { video_id; device_id }) ~k:(function
-        | Cast_ok _ -> toast ~ok:true "Casting started"
+        | Cast_ok _ ->
+            pause_local_playback ();
+            toast ~ok:true "Casting started"
         | Err e -> toast ~ok:false ("Cast failed: " ^ e)
         | Devices _ -> toast ~ok:false "Unexpected response")
 
@@ -231,12 +242,28 @@ let try_inject () =
          | None -> Dom.appendChild ctrls btn);
         log "cast button injected")
 
+(* Suppress YouTube's autostart on load: if the player is playing, pause it;
+   once it reports paused we're done and the loop stops, leaving any later user
+   play untouched. *)
+let block_autoplay confirmed =
+  match !confirmed with
+  | true -> ()
+  | false ->
+      Js.Opt.iter
+        (document##querySelector (Js.string "video.html5-main-video"))
+        (fun video ->
+          match Js.to_bool (Js.Unsafe.get video (Js.string "paused")) with
+          | true -> confirmed := true
+          | false -> ignore (Js.Unsafe.meth_call video "pause" [||] : _))
+
 let schedule_inject () =
   let attempts = ref 0 in
+  let confirmed = ref false in
   let timer : Js.Unsafe.any ref = ref (Js.Unsafe.inject Js.null) in
   let cb () =
     Int.incr attempts;
     try_inject ();
+    block_autoplay confirmed;
     match !attempts >= 20 with
     | true ->
         ignore

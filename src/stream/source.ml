@@ -17,7 +17,7 @@ type t = {
   duration_seconds : float;
   is_live : bool;
   start_walltime_ms : int;
-  storyboard : Storyboard.t Eio.Lazy.t option;
+  storyboard : (Youtube.Video_info.Storyboard.t * Storyboard.t Eio.Lazy.t) option;
 }
 
 let ( |+> ) (type k) (module M : Producer.S with type kind = k) (module Y : Producer.Make) =
@@ -208,7 +208,7 @@ let init ~env ~sw ~video_codecs ~audio_codecs ~max_width ~max_height ~transcode 
         | true -> None
         | false ->
           Selector.select_storyboard youtube.Youtube.video_info.streams
-          |> Option.map ~f:(fun sb -> Storyboard.init ~env ~sw ~client ~storyboard:sb)
+          |> Option.map ~f:(fun sb -> sb, Storyboard.init ~env ~sw ~client ~storyboard:sb)
       in
       { client; video = video_p; audio = audio_p;
         video_stream = video; audio_stream = audio;
@@ -245,7 +245,15 @@ let container t ~rendition =
   shape
 
 let iframe_stream t =
-  Option.map t.storyboard ~f:Eio.Lazy.force
+  Option.map t.storyboard ~f:(fun (_, lazy_sb) -> Eio.Lazy.force lazy_sb)
+
+(* Thumbnail dimensions for the master playlist's I-FRAME-STREAM-INF, read from
+   the raw storyboard metadata so emitting the reference does not force the
+   (expensive) sprite fetch + ffmpeg encode. That build is deferred until the
+   iframe playlist or segment is actually requested. *)
+let iframe_dimensions t =
+  Option.map t.storyboard ~f:(fun (sb, _) ->
+    sb.Youtube.Video_info.Storyboard.width, sb.Youtube.Video_info.Storyboard.height)
 
 let master t ~session_id:_ ~base_url:_ ~profile =
   let avg_bw =
@@ -259,7 +267,7 @@ let master t ~session_id:_ ~base_url:_ ~profile =
   in
   let video_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.video) in
   let audio_rfc6381 = Producer.Shape.rfc6381 (Producer.shape t.audio) in
-  Hls.master ~profile ?iframe_stream:(iframe_stream t) ~title:t.title
+  Hls.master ~profile ?iframe_thumb:(iframe_dimensions t) ~title:t.title
     ~video:t.video_stream ~audio:t.audio_stream
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw ()

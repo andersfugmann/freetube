@@ -61,18 +61,16 @@ let normalize_codec s =
 let secs_of_usec usec = Float.of_int usec /. 1_000_000.
 
 let frame_rate fps = Stdlib.Printf.sprintf "%.3f" fps
-let extinf_duration secs = Stdlib.Printf.sprintf "%.3f" secs
+let extinf_duration secs = Stdlib.Printf.sprintf "%.6f" secs
 
 let path base_url suffix = base_url ^ "/" ^ suffix
 
 let target_duration segments =
-  let max_d =
-    Array.fold segments ~init:0. ~f:(fun acc (s : Producer.Segment_info.t) ->
-      Float.max acc (secs_of_usec s.length_usec))
+  let max_usec =
+    Array.fold segments ~init:0 ~f:(fun acc (s : Producer.Segment_info.t) ->
+      Int.max acc s.length_usec)
   in
-  match Float.(max_d <= 0.) with
-  | true -> 1
-  | false -> Stdlib.int_of_float (Stdlib.ceil max_d)
+  Int.max 1 (Float.iround_nearest_exn (secs_of_usec max_usec))
 
 let average_bandwidth_bps segments =
   let total_bytes, total_usec =
@@ -139,7 +137,7 @@ let media ?(profile = generic_profile) ?(media_sequence = 0) ?program_date_time
     (header @ body_prefix @ pdt_line @ segment_lines ~is_live rendition ext segments @ ending)
   ^ "\n"
 
-let master ?(profile = generic_profile) ?iframe_stream ~title
+let master ?(profile = generic_profile) ?iframe_thumb ~title
     ~(video : Stream.t) ~(audio : Stream.t)
     ~video_rfc6381 ~audio_rfc6381
     ~average_bandwidth_bps:avg_bw () =
@@ -200,10 +198,8 @@ let master ?(profile = generic_profile) ?iframe_stream ~title
       hdcp_attr
   in
   let iframe_stream_inf =
-    match profile.iframe_stream, iframe_stream with
-    | true, Some ifs ->
-      let iw = Storyboard.thumb_width ifs in
-      let ih = Storyboard.thumb_height ifs in
+    match profile.iframe_stream, iframe_thumb with
+    | true, Some (iw, ih) ->
       let bw = (iw * ih * 8) / 2 in
       [ ""; Stdlib.Printf.sprintf
           "#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"avc1.42c00d\",URI=\"iframe/media.m3u8\",VIDEO-RANGE=%s"
@@ -358,14 +354,14 @@ let%expect_test "vod media playlist ends and includes each segment" =
     segment_count;
   [%expect {| true 3 |}]
 
-let%expect_test "target duration uses ceiling of max segment duration" =
+let%expect_test "target duration is the rounded max segment duration" =
   let line =
     media ~base_url:"/session/abc123" ~rendition:"video" ~ext:"webm" ~is_live:false sample_segments
     |> String.split_lines
     |> List.find_exn ~f:(String.is_prefix ~prefix:"#EXT-X-TARGETDURATION:")
   in
   Stdlib.Printf.printf "%s\n" line;
-  [%expect {| #EXT-X-TARGETDURATION:5 |}]
+  [%expect {| #EXT-X-TARGETDURATION:4 |}]
 
 let%expect_test "normalize_codec rewrites hev1 to hvc1 but leaves others" =
   List.iter [ "hev1.1.6.L153.B0"; "hvc1.1.6.L153.B0"; "avc1.640028"; "vp09.00.10.08"; "opus" ]
@@ -477,15 +473,15 @@ let%expect_test "golden media playlist: VOD generic profile" =
   [%expect {|
     #EXTM3U
     #EXT-X-VERSION:7
-    #EXT-X-TARGETDURATION:5
+    #EXT-X-TARGETDURATION:4
     #EXT-X-MEDIA-SEQUENCE:0
     #EXT-X-PLAYLIST-TYPE:VOD
     #EXT-X-MAP:URI="init.mp4"
-    #EXTINF:4.100,
+    #EXTINF:4.100000,
     seg/0.mp4
-    #EXTINF:4.000,
+    #EXTINF:4.000000,
     seg/1.mp4
-    #EXTINF:3.200,
+    #EXTINF:3.200000,
     seg/2.mp4
     #EXT-X-ENDLIST
     |}]
@@ -504,14 +500,14 @@ let%expect_test "golden media playlist: Samsung profile drops PLAYLIST-TYPE" =
   [%expect {|
     #EXTM3U
     #EXT-X-VERSION:7
-    #EXT-X-TARGETDURATION:5
+    #EXT-X-TARGETDURATION:4
     #EXT-X-MEDIA-SEQUENCE:0
     #EXT-X-MAP:URI="init.mp4"
-    #EXTINF:4.100,
+    #EXTINF:4.100000,
     seg/0.mp4
-    #EXTINF:4.000,
+    #EXTINF:4.000000,
     seg/1.mp4
-    #EXTINF:3.200,
+    #EXTINF:3.200000,
     seg/2.mp4
     #EXT-X-ENDLIST
     |}]
@@ -605,29 +601,21 @@ let%expect_test "iframe_media: golden I-frame-only playlist" =
     #EXT-X-PLAYLIST-TYPE:VOD
     #EXT-X-I-FRAMES-ONLY
     #EXT-X-MAP:URI="stream.mp4",BYTERANGE="774@0"
-    #EXTINF:2.000,
+    #EXTINF:2.000000,
     #EXT-X-BYTERANGE:1000@774
     stream.mp4
-    #EXTINF:2.000,
+    #EXTINF:2.000000,
     #EXT-X-BYTERANGE:1000@1774
     stream.mp4
-    #EXTINF:2.000,
+    #EXTINF:2.000000,
     #EXT-X-BYTERANGE:1000@2774
     stream.mp4
     #EXT-X-ENDLIST
     |}]
 
 let%expect_test "master playlist: I-FRAME-STREAM-INF emitted for generic profile" =
-  let ifs : Storyboard.t = {
-    data = String.make 5774 '\x00';
-    init_end = 774;
-    frame_ranges = Array.init 5 ~f:(fun i -> (774 + i * 1000, 1000));
-    thumb_width = 159;
-    thumb_height = 90;
-    frame_duration_secs = 2.0;
-  } in
   let playlist =
-    master ~profile:generic_profile ~iframe_stream:ifs ~title:"Test"
+    master ~profile:generic_profile ~iframe_thumb:(159, 90) ~title:"Test"
       ~video:sample_video ~audio:sample_audio
       ~video_rfc6381:"avc1.640028" ~audio_rfc6381:"mp4a.40.2"
       ~average_bandwidth_bps:4_200_000 ()
@@ -647,16 +635,9 @@ let%expect_test "master playlist: I-FRAME-STREAM-INF absent for Samsung profile"
     session_data = false;
     iframe_stream = false;
   } in
-  let ifs : Storyboard.t = {
-    data = String.make 5774 '\x00';
-    init_end = 774;
-    frame_ranges = Array.init 5 ~f:(fun i -> (774 + i * 1000, 1000));
-    thumb_width = 159;
-    thumb_height = 90;
-    frame_duration_secs = 2.0;
-  } in
+  let ifs = (159, 90) in
   let playlist =
-    master ~profile:samsung ~iframe_stream:ifs ~title:"Test"
+    master ~profile:samsung ~iframe_thumb:ifs ~title:"Test"
       ~video:sample_video ~audio:sample_audio
       ~video_rfc6381:"avc1.640028" ~audio_rfc6381:"mp4a.40.2"
       ~average_bandwidth_bps:4_200_000 ()

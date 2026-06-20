@@ -99,7 +99,7 @@ let vp9_init (t : Ebml.track_entry) =
   Bmff_builder.build_video_init ~four_cc:"vp09" ~ext_boxes:[ vpcc ]
     ~timescale:1000 ~width:v.width ~height:v.height ~track_id:1
 
-let opus_init (t : Ebml.track_entry) =
+let opus_init ~total_duration_usec (t : Ebml.track_entry) =
   let a = Option.value_exn ~message:"container_to_fmp4: Opus track missing audio element" t.audio in
   let opus_head =
     Option.value_exn ~message:"container_to_fmp4: A_OPUS missing CodecPrivate" t.codec_private
@@ -117,11 +117,8 @@ let opus_init (t : Ebml.track_entry) =
   let edts =
     match preskip > 0 with
     | true ->
-        let media_duration =
-          match t.default_duration_ns with
-          | Some _ -> 0
-          | None -> 0
-        in
+        let total_media = total_duration_usec * timescale / 1_000_000 in
+        let media_duration = Int.max 0 (total_media - preskip) in
         Some (Bmff_builder.edts_preskip ~timescale ~skip_samples:preskip
                 ~media_duration)
     | false -> None
@@ -131,7 +128,7 @@ let opus_init (t : Ebml.track_entry) =
     ~timescale ~channels:a.channels ~sample_rate:timescale
     ~track_id:1 ?edts ()
 
-let parse_init_webm ~kind (webm_init : string) =
+let parse_init_webm ~kind ~total_duration_usec (webm_init : string) =
   let length = String.length webm_init in
   let segment =
     Ebml.find_element webm_init ~id:Ebml.segment_id ~pos:0 ~limit:length
@@ -169,7 +166,7 @@ let parse_init_webm ~kind (webm_init : string) =
     match track.codec_id with
     | "V_AV1"  -> av1_init  track, 1000
     | "V_VP9"  -> vp9_init  track, 1000
-    | "A_OPUS" -> opus_init track, 48000
+    | "A_OPUS" -> opus_init ~total_duration_usec track, 48000
     | other    -> Printf.failwithf "container_to_fmp4: unsupported codec %s" other ()
   in
   init_bytes, track.track_number, timecode_scale_ns, media_timescale
@@ -204,8 +201,13 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
         Passthrough inner, inner_shape
       | Producer.Container.Webm ->
         let kind = kind_of_witness M.witness in
+        let total_duration_usec =
+          match (M.info inner).total_duration_usec with
+          | Some d -> d
+          | None -> 0
+        in
         let init_bytes, track_number, timecode_scale_ns, media_timescale =
-          parse_init_webm ~kind (M.init_segment inner)
+          parse_init_webm ~kind ~total_duration_usec (M.init_segment inner)
         in
         Log.info (fun m ->
           m "container_to_fmp4: track=%d ts_ns=%d media_ts=%d init=%d bytes"

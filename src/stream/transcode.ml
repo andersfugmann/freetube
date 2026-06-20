@@ -125,7 +125,20 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
     | Transcode s ->
       let upstream_init = M.init_segment s.inner in
       let upstream_seg = M.fetch_segment s.inner ~id in
-      let input = upstream_init ^ upstream_seg.data in
+      let to_aac =
+        match s.audio_params with
+        | Some { audio_codec = Codec.Audio.Aac } -> true
+        | _ -> false
+      in
+      (* The AAC encoder re-applies the Opus stream-start pre-skip to every
+         segment it transcodes; zero it for non-initial segments so no real
+         audio is trimmed. The initial segment keeps the genuine pre-skip. *)
+      let input_init =
+        match to_aac && id > 0 with
+        | true -> Bmff.zero_opus_preskip upstream_init
+        | false -> upstream_init
+      in
+      let input = input_init ^ upstream_seg.data in
       let clock = Eio.Stdenv.clock s.env in
       let t0 = Eio.Time.now clock in
       let output =
@@ -146,15 +159,33 @@ module Make (M : Producer.S) : Producer.S with type kind = M.kind = struct
          s.input_timescale <- Bmff.mdhd_timescale upstream_init;
          s.output_timescale <- Bmff.mdhd_timescale init_data;
          s.init_seg <- Some init_data);
-      let offset =
-        compute_offset ~input_timescale:s.input_timescale
-          ~output_timescale:s.output_timescale upstream_seg.data
+      let scale v =
+        Int64.(v * of_int s.output_timescale / of_int s.input_timescale)
       in
-      let segment_data = Bmff.shift_base_media_decode_times segment_data ~offset in
-      Log.info (fun m ->
-        let bdt_secs = Int64.to_float offset /. Float.of_int s.output_timescale in
-        m "transcode %s seg=%d baseMediaDecodeTime=%Ld (%.3fs) timescale=%d"
-          kind id offset bdt_secs s.output_timescale);
+      let segment_data =
+        match to_aac with
+        | true ->
+          (* Mirror the source timeline exactly: strip the AAC priming frame,
+             declare the source duration, and anchor tfdt to the source start. *)
+          let target =
+            Int64.to_int_exn (scale (Int64.of_int (Bmff.sum_trun_durations upstream_seg.data)))
+          in
+          let tfdt = scale (Bmff.get_base_media_decode_time upstream_seg.data) in
+          Log.info (fun m ->
+            m "transcode audio seg=%d fixup target=%d tfdt=%Ld timescale=%d"
+              id target tfdt s.output_timescale);
+          Bmff.fixup_aac_fragment segment_data ~target ~tfdt |> Result.ok_or_failwith
+        | false ->
+          let offset =
+            compute_offset ~input_timescale:s.input_timescale
+              ~output_timescale:s.output_timescale upstream_seg.data
+          in
+          Log.info (fun m ->
+            let bdt_secs = Int64.to_float offset /. Float.of_int s.output_timescale in
+            m "transcode %s seg=%d baseMediaDecodeTime=%Ld (%.3fs) timescale=%d"
+              kind id offset bdt_secs s.output_timescale);
+          Bmff.shift_base_media_decode_times segment_data ~offset
+      in
       { Producer.Segment.
         start_usec = upstream_seg.start_usec;
         length_usec = upstream_seg.length_usec;

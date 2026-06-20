@@ -58,7 +58,7 @@ let default = {
     default_segment_duration_us = 5_000_000;
   };
   network = {
-    max_connections_per_host = 2;
+    max_connections_per_host = 4;
     max_redirects = 5;
     ip_version = `V4;
     file_chunk_size = 65536;

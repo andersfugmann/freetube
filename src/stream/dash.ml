@@ -21,7 +21,7 @@ let total_duration_secs segments =
   |> secs_of_usec
 
 let pt_duration_secs secs =
-  Printf.sprintf "PT%.3fS" secs
+  Printf.sprintf "PT%.6fS" secs
 
 let iso8601_of_ms ms =
   let span = Ptime.Span.of_int_s (ms / 1000) in
@@ -193,7 +193,7 @@ let mpd ~title ~is_live ~start_walltime_ms ~container
       ~(video : Stream.t) ~(audio : Stream.t)
       ~video_rfc6381 ~audio_rfc6381
       ~video_segments ~audio_segments ?iframe_stream () =
-  let timescale = 1000 in
+  let timescale = 1_000_000 in
   let duration_secs =
     Float.max (total_duration_secs video_segments) (total_duration_secs audio_segments)
   in
@@ -245,7 +245,7 @@ let mpd ~title ~is_live ~start_walltime_ms ~container
     | `Data d -> `Data d
   in
   Xmlm.output_doc_tree frag o (None, mpd_node);
-  Buffer.contents buf
+  Buffer.contents buf ^ "\n"
 
 (* ── Tests ─────────────────────────────────────────────────────────── *)
 
@@ -340,9 +340,9 @@ let%expect_test "VOD MPD enumerates segments via SegmentTimeline" =
   Stdlib.Printf.printf "timeline=%b no_tmpl_duration=%b first_s=%b run=%b last_s=%b\n"
     (has "<SegmentTimeline>")
     (not (has "SegmentTemplate timescale=\"1000\" duration"))
-    (has "<S t=\"0\" d=\"4000\" r=\"1\"")
+    (has "<S t=\"0\" d=\"4000000\" r=\"1\"")
     (has "r=\"1\"")
-    (has "<S d=\"3000\"");
+    (has "<S d=\"3000000\"");
   [%expect {| timeline=true no_tmpl_duration=true first_s=true run=true last_s=true |}]
 
 let%expect_test "VOD MPD contains correct codec strings" =
